@@ -1,0 +1,20 @@
+(* c-like language *)
+
+alphabetic character = ? "A".."Z" ? | ? "a".."z" ? ;
+digit = ? "0".."9" ? ;
+valid ascii = ? ascii chars with ascii value bigger than 31 ? ;
+
+identifier begin = "_" | alphabetic character ;
+identifier all = identifier begin , { identifier begin | digit } ;
+reserved words = "double" | "else" | "if" | "int" | "print" | "scan" | "string" | "while" ;
+identifier = identifier all - reserved words ;
+
+integer = digit , { digit } ;
+
+exponent = ( "e" | "E" ) , [ ( "+" | "-" ) ] , digit , { digit } ;
+float = digit , { digit } , "," , digit , { digit } , [ exponent ] ;
+
+string = '"', { valid ascii - '"' }, '"' ;
+
+program = global variables , functions ;
+global variables = type , white space , identifier ;
