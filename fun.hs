@@ -3,10 +3,10 @@ module Main ( main ) where
 import System.Environment ( getArgs )
 import System.IO
 
-import Text.Parsec
-import qualified Text.Parsec.Token as P
-import Text.Parsec.Language
-import Text.Parsec.Expr
+import Text.ParserCombinators.Parsec
+import qualified Text.ParserCombinators.Parsec.Token as P
+import Text.ParserCombinators.Parsec.Expr
+import Text.ParserCombinators.Parsec.Language
 
 aelDef = emptyDef
        { commentStart = "/*"
@@ -19,7 +19,7 @@ aelDef = emptyDef
        , opLetter = opStart aelDef -- toto nevim, co znamena
        , reservedOpNames = ["=", "+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!="]
        -- TODO: "return" v zadani neni, ale IMHO by mel byt 
-       , redervedNames = ["double", "else", "if", "int", "print", "scan", "string", "while", "return"]
+       , reservedNames = ["double", "else", "if", "int", "print", "scan", "string", "while", "return"]
        , caseSensitive = True
        }
 
@@ -33,7 +33,7 @@ parens = P.parens lexer
 braces = P.braces lexer
 semi = P.semi lexer
 identifier = P.identifier lexer
-reserver = P.reserved lexer
+reserved = P.reserved lexer
 reservedOp = P.reservedOp lexer
 
 aep = do
@@ -46,13 +46,13 @@ aep = do
 data Type = Integer | Double | String
 
 data Command = DefineVar String Type -- je potreba taky empty?
-     | DefineFun String [ (String, Type) ] Seq -- TODO: toto je divny, pujde to tak?
-     | Assing String Expr
+     -- | DefineFun String [ (String, Type) ] Command -- TODO: toto je divny, pujde to tak?
+     | Assign String Expr
      | Print Expr
      | Scan String
      | Seq [ Command ]
-     | If BoolExpr Seq Seq -- mozna ma byt "Seq [ Command ]"? so many questions!
-     | While BoolExpr Seq  -- ditto
+     | If BoolExpr Command Command -- mozna ma byt "Seq [ Command ]"? so many questions!
+     | While BoolExpr Command  -- ditto
      | Return Expr
      -- tyhle veci si uplne nedokazu predstavit, jak maji fungovat
      -- maji byt funkce v AST? a jak?
@@ -72,7 +72,52 @@ data Command = DefineVar String Type -- je potreba taky empty?
      -- nemame first-class functions
      | Declare String [ ( String, Type ) ] -- TODO: toto je asi uplne blbe napsany, ale snad z toho bude jasny, co jsme mel na mysli a pak to pujde prepsat spravne
      | Call String [ String ]
-       deriving Show
+
+data Expr = Const Int
+  | Var String
+  | Add Expr Expr
+  | Sub Expr Expr
+  | Mult Expr Expr
+  | Div Expr Expr
+  deriving Show
+
+type SymbolTable = ([(String,Int)],[[(String,Int)]])
+
+expr = buildExpressionParser operators term where
+  operators = [
+      [ op "*" Mult, op "/" Div ],
+      [ op "+" Add, op "-" Sub ]
+    ]
+  op name fun =
+    Infix ( do { reservedOp name; return fun } ) AssocLeft
+
+term = do
+    i <- integer
+    return $ Const $ fromInteger i
+  <|> do
+    v <- identifier
+    return $ Var v
+  <|> parens expr
+  <?> "term"
+
+data BoolExpr = Equal Expr Expr
+  | NotEqual Expr Expr 
+	deriving Show
+
+boolExpr = do
+    e1 <- expr
+    o <- relOp
+    e2 <- expr
+    return $ o e1 e2
+  <?> "boolean expression"
+  where
+    relOp = ro' "==" Equal
+      <|> ro' "!=" NotEqual
+      <?> "relational operator"
+    ro' name fun = do
+      reservedOp name
+      return fun
+           
 
 cmd = do
     reserved "print"
@@ -122,7 +167,7 @@ cmd = do
     e <- expr
     semi
     return $ Return e
-    <|> do
+    <?> "command"
 
 -- type SymbolTable = [(String, Type, )] -- wtf, to musim mit datovy typ, spojujici String, Double a Integer?
 
@@ -131,6 +176,8 @@ parseAep input file =
               Left e -> error $ show e
               Right ast -> ast
 
+interpret :: SymbolTable -> Command -> IO SymbolTable
+interpret ts _ = return ts
 
 main = do
      args <- getArgs
@@ -140,4 +187,4 @@ main = do
           let fileName = args!!0
           input <- readFile fileName
           let ast = parseAep input fileName
-          interpret [] [] ast -- prvni je tabulka symbolu, druhe tabulka funkci?
+          interpret ([],[[]]) ast -- prvni je tabulka symbolu, druhe tabulka funkci?
