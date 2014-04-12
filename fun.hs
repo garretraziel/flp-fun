@@ -58,7 +58,7 @@ data Command = DefineVar String Type -- je potreba taky empty?
      | MainF Command
      deriving Show
 
-data Expr = Const Int
+data Expr = Const Integer -- TODO: tady ma byt MultiValue
   | Var String
   | Add Expr Expr
   | Sub Expr Expr
@@ -272,9 +272,38 @@ setSt (global, local@(head:rest)) variable value =
                            Just result -> (result, local)
            Just result -> (global, (result:rest))
 
+add :: MultiValue -> MultiValue -> MultiValue
+add (IntegerValue a) (IntegerValue b) = IntegerValue (a + b)
+add (DoubleValue a) (DoubleValue b) = DoubleValue (a + b)
+add (StringValue a) (StringValue b) = StringValue (a ++ b)
+
+sub :: MultiValue -> MultiValue -> MultiValue
+sub (IntegerValue a) (IntegerValue b) = IntegerValue (a - b)
+sub (DoubleValue a) (DoubleValue b) = DoubleValue (a - b)
+-- TODO: i pro integer s doublem?
+
+mult :: MultiValue -> MultiValue -> MultiValue
+mult (IntegerValue a) (IntegerValue b) = IntegerValue (a * b)
+mult (DoubleValue a) (DoubleValue b) = DoubleValue (a * b)
+-- TODO: i pro integer s doublem?
+
+-- TODO: nasledujici nefunguji, protoze haskell vymyslela banda kokotu a dva integery se samozrejme nedaji delit
+-- divide :: MultiValue -> MultiValue -> MultiValue
+-- divide (IntegerValue a) (IntegerValue b) = IntegerValue (a / b) -- TODO: nemusi se tady prevadet z double na integer?
+-- divide (DoubleValue a) (DoubleValue b) = DoubleValue (a / b)
+
+eval :: SymbolTable -> Expr -> MultiValue
+eval st (Const i) = IntegerValue i -- TODO: toto je zatim blbe, nemusi to byt jenom Integer, ale aby to slo zkompilovat...
+eval st (Var v) = getSt st v
+eval st (Add e1 e2) = (eval st e1) `add` (eval st e2)
+eval st (Sub e1 e2) = (eval st e1) `sub` (eval st e2)
+eval st (Mult e1 e2) = (eval st e1) `mult` (eval st e2)
+-- eval st (Div e1 e2) = (eval st e1) `divide` (eval st e2) -- a co deleni nulou?
+
 interpret :: SymbolTable -> Command -> IO SymbolTable
-interpret ts _ = return ts
---interpret ts (Print e) = putStrLn $ show $ eval e
+interpret st (Print e) = do
+          putStrLn $ show $ eval st e
+          return st
 
 main = do
      args <- getArgs
