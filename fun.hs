@@ -39,18 +39,22 @@ reservedOp = P.reservedOp lexer
 data Type = Integer | Double | String deriving Show
 
 data Command = DefineVar String Type -- je potreba taky empty?
-     -- | DefineFun String [ (String, Type) ] Command -- TODO: toto je divny, pujde to tak?
+    -- holy fucking shit  
+    --          nazev  parametry    telo     to je hnuj
+     | Function String [ Command ] Command -- TODO: toto je divny, pujde to tak?
      | Assign String Expr
      | Print Expr
      | Scan String
-     | Seq [ Command ]
+     | Seq [ Command ] -- hele je seq vubec potreba? odpovim si sam, asi je
      -- -| If BoolExpr (Seq [ Command ]) (Seq [ Command ]) -- WAT? ono to nejde..
-     | If BoolExpr [ Command ] [ Command ]
+     -- tak jinak
+     | If BoolExpr Command Command 
+     -- | If BoolExpr [ Command ] [ Command ]  -- WAT? ono to nejde..
      | While BoolExpr [ Command ]  -- ditto
      | Return Expr
      | Declare String [ ( String, Type ) ] -- TODO: toto je asi uplne blbe napsany, ale snad z toho bude jasny, co jsme mel na mysli a pak to pujde prepsat spravne
      | Call String [ String ]
-     | Main Command
+     | MainF Command
      deriving Show
 
 data Expr = Const Int
@@ -147,7 +151,7 @@ cmd = do
     seq1 <- braces $ many cmd -- TODO: toto mozna udelat zvlast jako parsovani seq? ale jak?
     reserved "else"
     seq2 <- braces $ many cmd
-    return $ If b seq1 seq2
+    return $ If b (Seq seq1) (Seq seq2)
     <|> do
     reserved "while"
     b <- parens $ boolExpr
@@ -163,7 +167,7 @@ cmd = do
 
 -- toto jeste zmenit
 funcBody = do
-    _ <- many varDeclarationLine
+    _ <- many $ varDeclarationLine
     seq <- many cmd
     return $ Seq seq
 
@@ -180,17 +184,51 @@ mainAST = do
     -- else do
     _ <- parens $ sepBy varDeclarationType comma -- zatim jen placeholder, nevim jak udelat prazdny zavorky
     seq <- braces $ funcBody
-    return $ Main seq
+    return $ MainF seq
     <?> "main"
 
 
+-- zatim jen int funkce, poresit nadtyp typu (podobne jak je v pasi.hs to PTypes)
+funcDeclaration = do
+  reserved "int"
+  i <- identifier
+  vars <- parens $ sepBy varDeclarationType comma
+  semi  -- nebo _ <- semi ?? kdo vi
+  return $ Function i vars (Seq [])
+  <?> "function definition"
+
+funcDefinition = do
+  reserved "int"
+  i <- identifier
+  vars <- parens $ sepBy varDeclarationType comma
+  seq <- braces $ funcBody
+  if i /= "main"
+  then return $ Function i vars seq
+  else return $ MainF seq
+  <?> "function declaration"  
+
+
+funcAST = do
+  -- jestli chapu dobre, try je dobrej k look ahead
+  try funcDeclaration
+  <|>
+  funcDefinition
+  <?> "function"
+
 aep = do
     whiteSpace
-    main <- mainAST 
+    _ <- many $ try varDeclarationLine
+    asts <- many funcAST
+    -- main <- mainAST 
     eof
-    return main
+    return asts
     <?> "aep"
 
+
+getMain :: [Command] -> Command
+getMain [] = error "Yo mama is so dumb, she forgot main!"
+getMain ((Function _ _ _) : asts) = getMain asts
+getMain (m@(MainF _) : _) = m
 
 
 parseAep input file =
@@ -208,6 +246,6 @@ main = do
      else do
           let fileName = args!!0
           input <- readFile fileName
-          let ast = parseAep input fileName
-          putStrLn $ show ast
-          interpret ([],[[]]) ast -- prvni je tabulka symbolu, druhe tabulka funkci?
+          let asts = parseAep input fileName
+          putStrLn $ show asts
+          interpret ([],[[]]) (getMain asts) -- prvni je tabulka symbolu, druhe tabulka funkci?

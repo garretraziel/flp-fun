@@ -1,3 +1,7 @@
+int test(int a){
+	return a;
+}
+
 int main(){
 	int a;
 	scan(a);
