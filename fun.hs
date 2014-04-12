@@ -37,6 +37,7 @@ reserved = P.reserved lexer
 reservedOp = P.reservedOp lexer
 
 data Type = Integer | Double | String deriving Show
+data MultiValue = IntegerValue Integer | DoubleValue Double | StringValue String deriving Show
 
 data Command = DefineVar String Type -- je potreba taky empty?
     -- holy fucking shit  
@@ -70,9 +71,7 @@ data Expr = Const Int
 -- ------------------------- SYMBOL TABLE OPERATIONS ----------------------- --
 -- ------------------------------------------------------------------------- --
 
-type SymbolTable = ([(String,Type)],[[(String,Type)]])
-
-
+type SymbolTable = ([(String,MultiValue)],[[(String,MultiValue)]])
 
 expr = buildExpressionParser operators term where
   operators = [
@@ -92,7 +91,11 @@ term = do
   <?> "term"
 
 data BoolExpr = Equal Expr Expr
-  | NotEqual Expr Expr 
+              | NotEqual Expr Expr
+              | Greater Expr Expr
+              | Lesser Expr Expr
+              | GreaterOrEqual Expr Expr
+              | LesserOrEqual Expr Expr
 	deriving Show
 
 boolExpr = do
@@ -104,6 +107,10 @@ boolExpr = do
   where
     relOp = ro' "==" Equal
       <|> ro' "!=" NotEqual
+      <|> ro' ">" Greater
+      <|> ro' "<" Lesser
+      <|> ro' ">=" GreaterOrEqual
+      <|> ro' "<=" LesserOrEqual
       <?> "relational operator"
     ro' name fun = do
       reservedOp name
@@ -236,8 +243,27 @@ parseAep input file =
               Left e -> error $ show e
               Right ast -> ast
 
+getSt :: SymbolTable -> String -> MultiValue
+getSt ([], ([]:_)) variable = error $ variable ++ " not in scope"
+getSt ([], (((name, value):xs):rest)) variable =
+  if variable == name then value
+  else getSt ([], (xs:rest)) variable
+getSt (((name, value):xs), rest) variable =
+  if variable == name then value
+  else getSt (xs, rest) variable
+
+-- "tvrda" varianta, ktera promennou nevytvari, jen nastavuje
+setSt :: SymbolTable -> String -> MultiValue -> SymbolTable
+setSt ([], ([]:_)) variable _ =  error $ variable ++ " not in scope"
+setSt ((name, _):xs, local@([]:_)) variable value =
+  if variable == name then ((name, value):xs, local)
+  else setSt (xs, local) variable value -- toto je blbe, protoze to cestou zahazuje hodnoty...
+--setSt (global, (((name, _):local):rest)) variable value =
+--  if variable == name then (global, 
+
 interpret :: SymbolTable -> Command -> IO SymbolTable
 interpret ts _ = return ts
+--interpret ts (Print e) = putStrLn $ show $ eval e
 
 main = do
      args <- getArgs
