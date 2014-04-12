@@ -15,10 +15,9 @@ aelDef = emptyDef
        , nestedComments = False
        , identStart = letter <|> char '_'
        , identLetter = alphaNum <|> char '_'
-       , opStart = oneOf "=+-*/" -- toto nevim, co znamena
-       , opLetter = opStart aelDef -- toto nevim, co znamena
+       , opStart = oneOf "=+-*/"
+       , opLetter = opStart aelDef
        , reservedOpNames = ["=", "+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!="]
-       -- TODO: "return" v zadani neni, ale IMHO by mel byt 
        , reservedNames = ["double", "else", "if", "int", "print", "scan", "string", "while", "return"]
        , caseSensitive = True
        }
@@ -32,18 +31,12 @@ integer = P.integer lexer
 parens = P.parens lexer
 braces = P.braces lexer
 semi = P.semi lexer
+comma = P.comma lexer
 identifier = P.identifier lexer
 reserved = P.reserved lexer
 reservedOp = P.reservedOp lexer
 
-aep = do
-    whiteSpace
-    ast <- cmd
-    eof
-    return ast
-    <?> "aep"
-
-data Type = Integer | Double | String
+data Type = Integer | Double | String deriving Show
 
 data Command = DefineVar String Type -- je potreba taky empty?
      -- | DefineFun String [ (String, Type) ] Command -- TODO: toto je divny, pujde to tak?
@@ -51,27 +44,14 @@ data Command = DefineVar String Type -- je potreba taky empty?
      | Print Expr
      | Scan String
      | Seq [ Command ]
-     | If BoolExpr Command Command -- mozna ma byt "Seq [ Command ]"? so many questions!
-     | While BoolExpr Command  -- ditto
+     -- -| If BoolExpr (Seq [ Command ]) (Seq [ Command ]) -- WAT? ono to nejde..
+     | If BoolExpr [ Command ] [ Command ]
+     | While BoolExpr [ Command ]  -- ditto
      | Return Expr
-     -- tyhle veci si uplne nedokazu predstavit, jak maji fungovat
-     -- maji byt funkce v AST? a jak?
-     -- mozna by bylo dobre mit AST, kde bude deklarace/definice funkce
-     -- a pak mit dve tabulky - tabulku promennych a tabulku funkci
-     -- kdyz program narazi na deklaraci, zapise do tabulky funkci hlavicku,
-     -- kdyz narazi na definici, zapise si do ni cele telo
-     -- no a pri vykonavani se pujde po AST a dal vubec nevim jak to bude fungovat
-     --
-     -- mozna by nemusel existovat zadny "globalni" syntakticky strom
-     -- a misto toho pole syntaktickych stromu, kde kazdy reprezentuje funkci
-     -- jednoduse by se pak resil main - startovaci misto programu
-     -- nicmene pak by zas bylo pain in the ass resit, jestli na danem miste
-     -- volana funkce uz byla nebo nebyla deklarovana
-     --
-     -- deklarace funkci by mozna vubec nemela byt prikaz, kdyz ani
-     -- nemame first-class functions
      | Declare String [ ( String, Type ) ] -- TODO: toto je asi uplne blbe napsany, ale snad z toho bude jasny, co jsme mel na mysli a pak to pujde prepsat spravne
      | Call String [ String ]
+     | Main Command
+     deriving Show
 
 data Expr = Const Int
   | Var String
@@ -81,7 +61,14 @@ data Expr = Const Int
   | Div Expr Expr
   deriving Show
 
-type SymbolTable = ([(String,Int)],[[(String,Int)]])
+
+-- ------------------------------------------------------------------------- --
+-- ------------------------- SYMBOL TABLE OPERATIONS ----------------------- --
+-- ------------------------------------------------------------------------- --
+
+type SymbolTable = ([(String,Type)],[[(String,Type)]])
+
+
 
 expr = buildExpressionParser operators term where
   operators = [
@@ -117,7 +104,26 @@ boolExpr = do
     ro' name fun = do
       reservedOp name
       return fun
-           
+
+varDeclarationType = do
+    reserved "int"
+    i <- identifier
+    return $ DefineVar i Integer
+    <|> do
+    reserved "double"
+    i <- identifier
+    return $ DefineVar i Double
+    <|> do
+    reserved "string"
+    i <- identifier
+    return $ DefineVar i String
+    <?> "variable declaration, no semi"
+
+varDeclarationLine = do
+  var <- varDeclarationType
+  semi
+  return var
+  <?> "variable declaration, one per line"           
 
 cmd = do
     reserved "print"
@@ -130,21 +136,6 @@ cmd = do
     semi
     return $ Scan i
     <|> do
-    reserved "int"
-    i <- identifier
-    semi
-    return $ DefineVar i Integer
-    <|> do
-    reserved "double"
-    i <- identifier
-    semi
-    return $ DefineVar i Double
-    <|> do
-    reserved "string"
-    i <- identifier
-    semi
-    return $ DefineVar i String
-    <|> do
     i <- identifier
     reserved "="
     e <- expr
@@ -153,14 +144,14 @@ cmd = do
     <|> do
     reserved "if"
     b <- parens $ boolExpr
-    seq1 <- braces $ cmd -- TODO: toto mozna udelat zvlast jako parsovani seq? ale jak?
+    seq1 <- braces $ many cmd -- TODO: toto mozna udelat zvlast jako parsovani seq? ale jak?
     reserved "else"
-    seq2 <- braces $ cmd
+    seq2 <- braces $ many cmd
     return $ If b seq1 seq2
     <|> do
     reserved "while"
     b <- parens $ boolExpr
-    seq <- braces $ cmd
+    seq <- braces $ many cmd
     return $ While b seq
     <|> do
     reserved "return"
@@ -169,7 +160,38 @@ cmd = do
     return $ Return e
     <?> "command"
 
--- type SymbolTable = [(String, Type, )] -- wtf, to musim mit datovy typ, spojujici String, Double a Integer?
+
+-- toto jeste zmenit
+funcBody = do
+    _ <- many varDeclarationLine
+    seq <- many cmd
+    return $ Seq seq
+
+
+
+mainAST = do
+    reserved "int"
+    -- hm...
+    string "main" 
+    -- to zakomentovany haze citelnejsi chybu, ale bez radku a sloupce
+    -- i <- identifier
+    -- if i /= "main"
+    -- then error "Expecting main function"
+    -- else do
+    _ <- parens $ sepBy varDeclarationType comma -- zatim jen placeholder, nevim jak udelat prazdny zavorky
+    seq <- braces $ funcBody
+    return $ Main seq
+    <?> "main"
+
+
+aep = do
+    whiteSpace
+    main <- mainAST 
+    eof
+    return main
+    <?> "aep"
+
+
 
 parseAep input file =
          case parse aep file input of
@@ -187,4 +209,5 @@ main = do
           let fileName = args!!0
           input <- readFile fileName
           let ast = parseAep input fileName
+          putStrLn $ show ast
           interpret ([],[[]]) ast -- prvni je tabulka symbolu, druhe tabulka funkci?
