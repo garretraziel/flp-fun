@@ -37,7 +37,7 @@ reserved = P.reserved lexer
 reservedOp = P.reservedOp lexer
 
 data Type = Integer | Double | String deriving Show
-data MultiValue = IntegerValue Integer | DoubleValue Double | StringValue String deriving Show
+data MultiValue = Undefined | IntegerValue Integer | DoubleValue Double | StringValue String deriving Show
 
 data Command = DefineVar String Type -- je potreba taky empty?
     -- holy fucking shit  
@@ -71,7 +71,10 @@ data Expr = Const Int
 -- ------------------------- SYMBOL TABLE OPERATIONS ----------------------- --
 -- ------------------------------------------------------------------------- --
 
-type SymbolTable = ([(String,MultiValue)],[[(String,MultiValue)]])
+type VariableTable = [(String,MultiValue)]
+type GlobalTable = VariableTable
+type LocalTable = [VariableTable]
+type SymbolTable = (GlobalTable,LocalTable)
 
 expr = buildExpressionParser operators term where
   operators = [
@@ -244,7 +247,7 @@ parseAep input file =
               Right ast -> ast
 
 getSt :: SymbolTable -> String -> MultiValue
-getSt ([], ([]:_)) variable = error $ variable ++ " not in scope"
+getSt ([], ([]:_)) variable = error $ "Variable \"" ++ variable ++ "\" not in scope"
 getSt ([], (((name, value):xs):rest)) variable =
   if variable == name then value
   else getSt ([], (xs:rest)) variable
@@ -252,14 +255,22 @@ getSt (((name, value):xs), rest) variable =
   if variable == name then value
   else getSt (xs, rest) variable
 
+setVariableInList :: VariableTable -> String -> MultiValue -> Maybe VariableTable
+setVariableInList [] variable _ = Nothing
+setVariableInList (first@(name, _):xs) variable value =
+                  if name == variable then Just ((name, value):xs)
+                  else case setVariableInList xs variable value of
+                            Nothing -> Nothing
+                            Just a -> Just (first:a)
+
 -- "tvrda" varianta, ktera promennou nevytvari, jen nastavuje
 setSt :: SymbolTable -> String -> MultiValue -> SymbolTable
-setSt ([], ([]:_)) variable _ =  error $ variable ++ " not in scope"
-setSt ((name, _):xs, local@([]:_)) variable value =
-  if variable == name then ((name, value):xs, local)
-  else setSt (xs, local) variable value -- toto je blbe, protoze to cestou zahazuje hodnoty...
---setSt (global, (((name, _):local):rest)) variable value =
---  if variable == name then (global, 
+setSt (global, local@(head:rest)) variable value =
+      case setVariableInList head variable value of
+           Nothing -> case setVariableInList global variable value of
+                           Nothing -> error $ "Variable \"" ++ variable ++ "\" not in scope"
+                           Just result -> (result, local)
+           Just result -> (global, (result:rest))
 
 interpret :: SymbolTable -> Command -> IO SymbolTable
 interpret ts _ = return ts
