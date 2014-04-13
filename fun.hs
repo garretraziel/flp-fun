@@ -36,23 +36,24 @@ identifier = P.identifier lexer
 reserved = P.reserved lexer
 reservedOp = P.reservedOp lexer
 
-data MultiValue = UndefInt | UndefStr | UndefDouble | IntegerValue Integer | DoubleValue Double | StringValue String deriving Show
-data Funcions = Function String [ Command ] Command | MainF Command deriving Show
+data MultiValue = UndefInt | UndefStr | UndefDouble | IntegerValue Integer | DoubleValue Double | StringValue String deriving (Show, Eq)
 
 data Command = DefineVar String MultiValue -- je potreba taky empty?
-    -- holy fucking shit  
-    --          nazev  parametry    telo     to je hnuj
      | Assign String Expr
      | Print Expr
      | Scan String
      | Seq [ Command ] -- hele je seq vubec potreba? odpovim si sam, asi je
      -- -| If BoolExpr (Seq [ Command ]) (Seq [ Command ]) -- WAT? ono to nejde..
      -- tak jinak
-     | If BoolExpr Command Command 
+     | If Expr Command Command
      -- | If BoolExpr [ Command ] [ Command ]  -- WAT? ono to nejde..
-     | While BoolExpr [ Command ]  -- ditto
+     | While Expr [ Command ]  -- ditto
      | Return Expr
      | Declare String [ ( String, MultiValue ) ] -- TODO: toto je asi uplne blbe napsany, ale snad z toho bude jasny, co jsme mel na mysli a pak to pujde prepsat spravne
+     -- holy fucking shit
+     --          nazev  parametry    telo     to je hnuj
+     | Function String [ Command ] Command
+     | MainF Command
      | Call String [ String ]
      deriving Show
 
@@ -62,6 +63,12 @@ data Expr = Const Integer -- TODO: tady ma byt MultiValue
   | Sub Expr Expr
   | Mult Expr Expr
   | Div Expr Expr
+  | Equal Expr Expr
+  | NotEqual Expr Expr
+  | Greater Expr Expr
+  | Lesser Expr Expr
+  | GreaterOrEqual Expr Expr
+  | LesserOrEqual Expr Expr
   deriving Show
 
 
@@ -77,7 +84,9 @@ type SymbolTable = (GlobalTable,LocalTable)
 expr = buildExpressionParser operators term where
   operators = [
       [ op "*" Mult, op "/" Div ],
-      [ op "+" Add, op "-" Sub ]
+      [ op "+" Add, op "-" Sub ],
+      [ op "<" Lesser, op "<=" LesserOrEqual, op ">" Greater, op ">=" GreaterOrEqual,
+        op "==" Equal, op "!=" NotEqual]
     ]
   op name fun =
     Infix ( do { reservedOp name; return fun } ) AssocLeft
@@ -90,32 +99,6 @@ term = do
     return $ Var v
   <|> parens expr
   <?> "term"
-
-data BoolExpr = Equal Expr Expr
-              | NotEqual Expr Expr
-              | Greater Expr Expr
-              | Lesser Expr Expr
-              | GreaterOrEqual Expr Expr
-              | LesserOrEqual Expr Expr
-	deriving Show
-
-boolExpr = do
-    e1 <- expr
-    o <- relOp
-    e2 <- expr
-    return $ o e1 e2
-  <?> "boolean expression"
-  where
-    relOp = ro' "==" Equal
-      <|> ro' "!=" NotEqual
-      <|> ro' ">" Greater
-      <|> ro' "<" Lesser
-      <|> ro' ">=" GreaterOrEqual
-      <|> ro' "<=" LesserOrEqual
-      <?> "relational operator"
-    ro' name fun = do
-      reservedOp name
-      return fun
 
 varDeclarationType = do
     reserved "int"
@@ -155,14 +138,14 @@ cmd = do
     return $ Assign i e
     <|> do
     reserved "if"
-    b <- parens $ boolExpr
+    b <- parens $ expr
     seq1 <- braces $ many cmd -- TODO: toto mozna udelat zvlast jako parsovani seq? ale jak?
     reserved "else"
     seq2 <- braces $ many cmd
     return $ If b (Seq seq1) (Seq seq2)
     <|> do
     reserved "while"
-    b <- parens $ boolExpr
+    b <- parens $ expr
     seq <- braces $ many cmd
     return $ While b seq
     <|> do
@@ -274,6 +257,10 @@ setSt (global, local@(head:rest)) variable value =
 insertStLocal :: SymbolTable -> String -> MultiValue -> SymbolTable
 insertStLocal (global, (head:rest)) name value = (global, ((name, value):head):rest)
 
+-- TODO: taky prebirat funkci a rovnou vytvorit a naplnit argumenty
+prepareStForCall :: SymbolTable -> SymbolTable
+prepareStForCall (global, local) = (global, ([]:local))
+
 add :: MultiValue -> MultiValue -> MultiValue
 add (IntegerValue a) (IntegerValue b) = IntegerValue (a + b)
 add (DoubleValue a) (DoubleValue b) = DoubleValue (a + b)
@@ -289,10 +276,34 @@ mult (IntegerValue a) (IntegerValue b) = IntegerValue (a * b)
 mult (DoubleValue a) (DoubleValue b) = DoubleValue (a * b)
 -- TODO: i pro integer s doublem?
 
--- TODO: nasledujici nefunguji, protoze haskell vymyslela banda kokotu a dva integery se samozrejme nedaji delit
 divide :: MultiValue -> MultiValue -> MultiValue
 divide (IntegerValue a) (IntegerValue b) = IntegerValue (quot a  b) -- TODO: nemusi se tady prevadet z double na integer?
 divide (DoubleValue a) (DoubleValue b) = DoubleValue (a / b)
+
+comp :: Ordering -> MultiValue -> MultiValue -> MultiValue
+comp order (IntegerValue a) (IntegerValue b) =
+     if (compare a b) == order then IntegerValue 1
+     else IntegerValue 0
+comp order (DoubleValue a) (DoubleValue b) =
+     if (compare a b) == order then IntegerValue 1
+     else IntegerValue 0
+comp order (StringValue a) (StringValue b) =
+     if (compare a b) == order then IntegerValue 1
+     else IntegerValue 0
+comp _ _ _ = error "Cannot compare"
+
+orMultiVal :: MultiValue -> MultiValue -> MultiValue
+orMultiVal (IntegerValue a) (IntegerValue b) =
+           if (a /= 0) || (b /= 0) then (IntegerValue 1)
+           else (IntegerValue 0)
+
+notMultiVal :: MultiValue -> MultiValue
+notMultiVal (IntegerValue 0) = IntegerValue 1
+notMultiVal _ = IntegerValue 0
+
+lesser = comp LT
+greater = comp GT
+equal = comp EQ
 
 eval :: SymbolTable -> Expr -> MultiValue
 eval st (Const i) = IntegerValue i -- TODO: toto je zatim blbe, nemusi to byt jenom Integer, ale aby to slo zkompilovat...
@@ -301,7 +312,20 @@ eval st (Add e1 e2) = (eval st e1) `add` (eval st e2)
 eval st (Sub e1 e2) = (eval st e1) `sub` (eval st e2)
 eval st (Mult e1 e2) = (eval st e1) `mult` (eval st e2)
 eval st (Div e1 e2) = (eval st e1) `divide` (eval st e2) -- a co deleni nulou?
+eval st (Lesser e1 e2) = (eval st e1) `lesser` (eval st e2)
+eval st (Greater e1 e2) = (eval st e1) `greater` (eval st e2)
+eval st (Equal e1 e2) = (eval st e1) `equal` (eval st e2)
+eval st (NotEqual e1 e2) = notMultiVal $ (eval st e1) `equal` (eval st e2)
+eval st (LesserOrEqual e1 e2) =
+     ((eval st e1) `lesser` (eval st e2)) `orMultiVal` ((eval st e1) `equal` (eval st e2))
+eval st (GreaterOrEqual e1 e2) =
+     ((eval st e1) `greater` (eval st e2)) `orMultiVal` ((eval st e1) `equal` (eval st e2))
 
+evaluateBool :: SymbolTable -> Expr -> IO Bool
+evaluateBool st expr = do
+             return $ (eval st expr) /= IntegerValue 0
+
+--    tabulka symbolu - aktualni prikaz - tabulka funkci - vystup
 interpret :: SymbolTable -> Command -> [Command] -> IO SymbolTable
 interpret st (DefineVar name value) functions = do
           putStrLn "define var"
@@ -320,6 +344,14 @@ interpret st (Seq (first:others)) functions = do
           putStrLn "seq"
           newst <- interpret st first functions
           interpret newst (Seq others) functions
+interpret st (MainF seq) functions = do
+          putStrLn "main"
+          interpret (prepareStForCall st) seq functions
+interpret st (If e seq1 seq2) functions = do
+          putStrLn "if"
+          first <- evaluateBool st e
+          if first then interpret st seq1 functions
+          else interpret st seq2 functions
 interpret st _ _ = do
           putStrLn "other"
           return st
