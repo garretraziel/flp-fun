@@ -159,9 +159,9 @@ cmd = do
 
 -- toto jeste zmenit
 funcBody = do
-    _ <- many $ varDeclarationLine
+    vars <- many $ varDeclarationLine
     seq <- many cmd
-    return $ Seq seq
+    return $ Seq (vars++seq) -- TODO: toto mozna bude stacit takto?
 
 
 mainAST = do
@@ -259,8 +259,9 @@ insertStLocal :: SymbolTable -> String -> MultiValue -> SymbolTable
 insertStLocal (global, (head:rest)) name value = (global, ((name, value):head):rest)
 
 -- TODO: taky prebirat funkci a rovnou vytvorit a naplnit argumenty
-prepareStForCall :: SymbolTable -> SymbolTable
-prepareStForCall (global, local) = (global, ([]:local))
+prepareStForCall :: SymbolTable -> [Command] -> IO SymbolTable
+prepareStForCall (global, local) defs = do
+                 interpret (global, ([]:local)) (Seq defs) []
 
 add :: MultiValue -> MultiValue -> MultiValue
 add (IntegerValue a) (IntegerValue b) = IntegerValue (a + b)
@@ -354,17 +355,22 @@ interpret st (If e seq1 seq2) functions
           | otherwise = do
                       putStrLn "if second"
                       interpret st seq2 functions
-interpret st (While e seq) funcions
+interpret st loop@(While e seq) funcions
           | evaluateBool st e = do
                          putStrLn "while loop"
                          newst <- interpret st seq funcions
-                         interpret newst (While e seq) funcions
+                         interpret newst loop funcions
           | otherwise = do
                       putStrLn "while end"
                       return st
 interpret st (MainF seq) functions = do
           putStrLn "main"
-          interpret (prepareStForCall st) seq functions
+          newst <- prepareStForCall st []
+          interpret newst seq functions
+interpret st (Function _ params seq) functions = do
+          putStrLn "func call"
+          -- newst <- prepareStForCall st params -- TODO: toto ma byt v call, kvuli nastavenejm promenejm
+          interpret newst seq functions
 interpret st _ _ = do
           putStrLn "other"
           return st

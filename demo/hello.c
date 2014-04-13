@@ -8,7 +8,8 @@ int main(){
 	if(a!=5){
 		print(a);
 	} else {
-
+            //		test(2);
+		print(a);
 	}
 	return 0;
 }
