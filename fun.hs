@@ -37,11 +37,11 @@ reserved = P.reserved lexer
 reservedOp = P.reservedOp lexer
 
 data MultiValue = UndefInt | UndefStr | UndefDouble | IntegerValue Integer | DoubleValue Double | StringValue String deriving Show
+data Funcions = Function String [ Command ] Command | MainF Command deriving Show
 
 data Command = DefineVar String MultiValue -- je potreba taky empty?
     -- holy fucking shit  
     --          nazev  parametry    telo     to je hnuj
-     | Function String [ Command ] Command -- TODO: toto je divny, pujde to tak?
      | Assign String Expr
      | Print Expr
      | Scan String
@@ -54,7 +54,6 @@ data Command = DefineVar String MultiValue -- je potreba taky empty?
      | Return Expr
      | Declare String [ ( String, MultiValue ) ] -- TODO: toto je asi uplne blbe napsany, ale snad z toho bude jasny, co jsme mel na mysli a pak to pujde prepsat spravne
      | Call String [ String ]
-     | MainF Command
      deriving Show
 
 data Expr = Const Integer -- TODO: tady ma byt MultiValue
@@ -303,19 +302,27 @@ eval st (Sub e1 e2) = (eval st e1) `sub` (eval st e2)
 eval st (Mult e1 e2) = (eval st e1) `mult` (eval st e2)
 eval st (Div e1 e2) = (eval st e1) `divide` (eval st e2) -- a co deleni nulou?
 
-interpret :: SymbolTable -> Command -> IO SymbolTable
-interpret st (DefineVar name value) = do
+interpret :: SymbolTable -> Command -> [Command] -> IO SymbolTable
+interpret st (DefineVar name value) functions = do
+          putStrLn "define var"
           return $ insertStLocal st name value
-interpret st (Assign name e) = do
+interpret st (Assign name e) functions = do
+          putStrLn "assing var"
           return $ setSt st name $ eval st e
-interpret st (Print e) = do
+interpret st (Print e) functions = do
+          putStrLn "print var"
           putStrLn $ show $ eval st e
           return st
-interpret st (Seq []) = do
+interpret st (Seq []) functions = do
+          putStrLn "last seq"
           return st
-interpret st (Seq (first:others)) = do
-          newst <- interpret st first
-          interpret newst $ Seq others
+interpret st (Seq (first:others)) functions = do
+          putStrLn "seq"
+          newst <- interpret st first functions
+          interpret newst (Seq others) functions
+interpret st _ _ = do
+          putStrLn "other"
+          return st
 
 main = do
      args <- getArgs
@@ -326,4 +333,4 @@ main = do
           input <- readFile fileName
           let asts = parseAep input fileName
           putStrLn $ show asts
-          interpret ([],[[]]) (getMain asts) -- prvni je tabulka symbolu, druhe tabulka funkci?
+          interpret ([],[[]]) (getMain asts) asts -- prvni je tabulka symbolu, druhe tabulka funkci?
