@@ -47,7 +47,8 @@ data Command = DefineVar String MultiValue -- je potreba taky empty?
      -- tak jinak
      | If Expr Command Command
      -- | If BoolExpr [ Command ] [ Command ]  -- WAT? ono to nejde..
-     | While Expr [ Command ]  -- ditto
+     -- | While Expr [ Command ]  -- ditto
+     | While Expr Command  -- ditto
      | Return Expr
      | Declare String [ ( String, MultiValue ) ] -- TODO: toto je asi uplne blbe napsany, ale snad z toho bude jasny, co jsme mel na mysli a pak to pujde prepsat spravne
      -- holy fucking shit
@@ -147,7 +148,7 @@ cmd = do
     reserved "while"
     b <- parens $ expr
     seq <- braces $ many cmd
-    return $ While b seq
+    return $ While b (Seq seq)
     <|> do
     reserved "return"
     e <- expr
@@ -321,9 +322,8 @@ eval st (LesserOrEqual e1 e2) =
 eval st (GreaterOrEqual e1 e2) =
      ((eval st e1) `greater` (eval st e2)) `orMultiVal` ((eval st e1) `equal` (eval st e2))
 
-evaluateBool :: SymbolTable -> Expr -> IO Bool
-evaluateBool st expr = do
-             return $ (eval st expr) /= IntegerValue 0
+evaluateBool :: SymbolTable -> Expr -> Bool
+evaluateBool st expr = (eval st expr) /= IntegerValue 0
 
 --    tabulka symbolu - aktualni prikaz - tabulka funkci - vystup
 interpret :: SymbolTable -> Command -> [Command] -> IO SymbolTable
@@ -337,6 +337,9 @@ interpret st (Print e) functions = do
           putStrLn "print var"
           putStrLn $ show $ eval st e
           return st
+interpret st (Scan name) functions = do
+          putStrLn "scan var"
+          return st
 interpret st (Seq []) functions = do
           putStrLn "last seq"
           return st
@@ -344,14 +347,24 @@ interpret st (Seq (first:others)) functions = do
           putStrLn "seq"
           newst <- interpret st first functions
           interpret newst (Seq others) functions
+interpret st (If e seq1 seq2) functions
+          | evaluateBool st e = do
+                         putStrLn "if first"
+                         interpret st seq1 functions
+          | otherwise = do
+                      putStrLn "if second"
+                      interpret st seq2 functions
+interpret st (While e seq) funcions
+          | evaluateBool st e = do
+                         putStrLn "while loop"
+                         newst <- interpret st seq funcions
+                         interpret newst (While e seq) funcions
+          | otherwise = do
+                      putStrLn "while end"
+                      return st
 interpret st (MainF seq) functions = do
           putStrLn "main"
           interpret (prepareStForCall st) seq functions
-interpret st (If e seq1 seq2) functions = do
-          putStrLn "if"
-          first <- evaluateBool st e
-          if first then interpret st seq1 functions
-          else interpret st seq2 functions
 interpret st _ _ = do
           putStrLn "other"
           return st
