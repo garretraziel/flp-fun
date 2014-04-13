@@ -24,10 +24,10 @@ aelDef = emptyDef
 
 lexer = P.makeTokenParser aelDef
 
--- mozna by se hodily dalsi: string, operator, float...
--- viz http://hackage.haskell.org/package/parsec-3.0.0/docs/Text-Parsec-Token.html
 whiteSpace = P.whiteSpace lexer
 integer = P.integer lexer
+double = P.float lexer
+stringLiteral = P.stringLiteral lexer
 parens = P.parens lexer
 braces = P.braces lexer
 semi = P.semi lexer
@@ -36,7 +36,13 @@ identifier = P.identifier lexer
 reserved = P.reserved lexer
 reservedOp = P.reservedOp lexer
 
-data MultiValue = UndefInt | UndefStr | UndefDouble | IntegerValue Integer | DoubleValue Double | StringValue String deriving (Show, Eq)
+data MultiValue = UndefInt
+     | UndefStr
+     | UndefDouble
+     | IntegerValue Integer
+     | DoubleValue Double
+     | StringValue String
+     deriving (Show, Eq)
 
 data Command = DefineVar String MultiValue -- je potreba taky empty?
      | Assign String Expr
@@ -55,10 +61,12 @@ data Command = DefineVar String MultiValue -- je potreba taky empty?
      --          nazev  parametry    telo     to je hnuj
      | Function String [ Command ] Command
      | MainF Command
-     | Call String [ String ]
+     | Eval Expr -- kvuli funccall
      deriving Show
 
-data Expr = Const Integer -- TODO: tady ma byt MultiValue
+data Expr = ConstInt Integer
+  | ConstDouble Double
+  | ConstString String
   | Var String
   | Add Expr Expr
   | Sub Expr Expr
@@ -70,6 +78,7 @@ data Expr = Const Integer -- TODO: tady ma byt MultiValue
   | Lesser Expr Expr
   | GreaterOrEqual Expr Expr
   | LesserOrEqual Expr Expr
+  | Call String [Expr]
   deriving Show
 
 
@@ -94,7 +103,17 @@ expr = buildExpressionParser operators term where
 
 term = do
     i <- integer
-    return $ Const $ fromInteger i
+    return $ ConstInt $ fromInteger i
+  <|> do
+    d <- double
+    return $ ConstDouble d
+  <|> do
+    s <- stringLiteral
+    return $ ConstString s
+  <|> do
+    f <- identifier
+    exprs <- parens $ sepBy expr comma
+    return $ Call f exprs
   <|> do
     v <- identifier
     return $ Var v
@@ -154,15 +173,17 @@ cmd = do
     e <- expr
     semi
     return $ Return e
+    <|> do
+    e <- expr
+    semi
+    return $ Eval e
     <?> "command"
-
 
 -- toto jeste zmenit
 funcBody = do
     vars <- many $ varDeclarationLine
     seq <- many cmd
     return $ Seq (vars++seq) -- TODO: toto mozna bude stacit takto?
-
 
 mainAST = do
     reserved "int"
@@ -177,7 +198,6 @@ mainAST = do
     seq <- braces $ funcBody
     return $ MainF seq
     <?> "main"
-
 
 -- zatim jen int funkce, poresit nadtyp typu (podobne jak je v pasi.hs to PTypes)
 funcDeclaration = do
@@ -308,7 +328,9 @@ greater = comp GT
 equal = comp EQ
 
 eval :: SymbolTable -> Expr -> MultiValue
-eval st (Const i) = IntegerValue i -- TODO: toto je zatim blbe, nemusi to byt jenom Integer, ale aby to slo zkompilovat...
+eval st (ConstInt i) = IntegerValue i
+eval st (ConstDouble d) = DoubleValue d
+eval st (ConstString s) = StringValue s
 eval st (Var v) = getSt st v
 eval st (Add e1 e2) = (eval st e1) `add` (eval st e2)
 eval st (Sub e1 e2) = (eval st e1) `sub` (eval st e2)
@@ -370,7 +392,10 @@ interpret st (MainF seq) functions = do
 interpret st (Function _ params seq) functions = do
           putStrLn "func call"
           -- newst <- prepareStForCall st params -- TODO: toto ma byt v call, kvuli nastavenejm promenejm
-          interpret newst seq functions
+          interpret st seq functions
+--interpret st (Eval e) functions = do
+--          eval st e
+--          return st
 interpret st _ _ = do
           putStrLn "other"
           return st
