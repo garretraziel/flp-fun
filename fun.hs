@@ -111,14 +111,17 @@ term = do
     s <- stringLiteral
     return $ ConstString s
   <|> do
-    f <- identifier
-    exprs <- parens $ sepBy expr comma
-    return $ Call f exprs
+    try funcCallParser
   <|> do
     v <- identifier
     return $ Var v
   <|> parens expr
   <?> "term"
+
+funcCallParser = do
+    f <- identifier
+    exprs <- parens $ sepBy expr comma
+    return $ Call f exprs
 
 varDeclarationType = do
     reserved "int"
