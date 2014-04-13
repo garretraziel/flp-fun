@@ -333,23 +333,51 @@ lesser = comp LT
 greater = comp GT
 equal = comp EQ
 
-eval :: SymbolTable -> Expr -> [Command] -> MultiValue
-eval st (ConstInt i) _ = IntegerValue i
-eval st (ConstDouble d) _ = DoubleValue d
-eval st (ConstString s) _ = StringValue s
-eval st (Var v) _ = getSt st v
-eval st (Add e1 e2) fs = (eval st e1 fs) `add` (eval st e2 fs)
-eval st (Sub e1 e2) fs = (eval st e1 fs) `sub` (eval st e2 fs)
-eval st (Mult e1 e2) fs = (eval st e1 fs) `mult` (eval st e2 fs)
-eval st (Div e1 e2) fs = (eval st e1 fs) `divide` (eval st e2 fs) -- a co deleni nulou?
-eval st (Lesser e1 e2) fs = (eval st e1 fs) `lesser` (eval st e2 fs)
-eval st (Greater e1 e2) fs = (eval st e1 fs) `greater` (eval st e2 fs)
-eval st (Equal e1 e2) fs = (eval st e1 fs) `equal` (eval st e2 fs)
-eval st (NotEqual e1 e2) fs = notMultiVal $ (eval st e1 fs) `equal` (eval st e2 fs)
-eval st (LesserOrEqual e1 e2) fs =
-     ((eval st e1 fs) `lesser` (eval st e2 fs)) `orMultiVal` ((eval st e1 fs) `equal` (eval st e2 fs))
-eval st (GreaterOrEqual e1 e2) fs =
-     ((eval st e1 fs) `greater` (eval st e2 fs)) `orMultiVal` ((eval st e1 fs) `equal` (eval st e2 fs))
+eval :: SymbolTable -> Expr -> [Command] -> IO MultiValue
+eval st (ConstInt i) _ = return $ IntegerValue i
+eval st (ConstDouble d) _ = return $ DoubleValue d
+eval st (ConstString s) _ = return $ StringValue s
+eval st (Var v) _ = return $ getSt st v
+eval st (Add e1 e2) fs = do
+     first <- (eval st e1 fs)
+     second <- (eval st e2 fs)
+     return $ first `add` second
+eval st (Sub e1 e2) fs = do
+     first <- (eval st e1 fs)
+     second <- (eval st e2 fs)
+     return $ first `sub` second
+eval st (Mult e1 e2) fs = do
+     first <- (eval st e1 fs)
+     second <- (eval st e2 fs)
+     return $ first `mult` second
+eval st (Div e1 e2) fs = do
+     first <- (eval st e1 fs)
+     second <- (eval st e2 fs)
+     return $ first `divide` second -- a co deleni nulou?
+eval st (Lesser e1 e2) fs = do
+     first <- (eval st e1 fs)
+     second <- (eval st e2 fs)
+     return $ first `lesser` second
+eval st (Greater e1 e2) fs = do
+     first <- (eval st e1 fs)
+     second <- (eval st e2 fs)
+     return $ first `greater` second
+eval st (Equal e1 e2) fs = do
+     first <- (eval st e1 fs)
+     second <- (eval st e2 fs)
+     return $ first `equal` second
+eval st (NotEqual e1 e2) fs = do
+     first <- (eval st e1 fs)
+     second <- (eval st e2 fs)
+     return $ notMultiVal $ first `equal` second
+eval st (LesserOrEqual e1 e2) fs = do
+     first <- (eval st e1 fs)
+     second <- (eval st e2 fs)
+     return $ (first `lesser` second) `orMultiVal` (first `equal` second)
+eval st (GreaterOrEqual e1 e2) fs = do
+     first <- (eval st e1 fs)
+     second <- (eval st e2 fs)
+     return $ (first `greater` second) `orMultiVal` (first `equal` second)
 --eval st (Call name vars) fs =
 --     case call vars st (getFunction fs name) of
 --          IO val@(IntegerValue i) -> val
@@ -361,8 +389,11 @@ eval st (GreaterOrEqual e1 e2) fs =
 --call name args st functions = do
 --     return $ IntegerValue 0
 
-evaluateBool :: SymbolTable -> Expr -> [Command] -> Bool
-evaluateBool st expr fs = (eval st expr fs) /= IntegerValue 0
+evaluateBool :: SymbolTable -> Expr -> [Command] -> IO Bool
+evaluateBool st expr fs = do
+             res <- (eval st expr fs)
+             if  res /= IntegerValue 0 then return True
+             else return False
 
 --    tabulka symbolu - aktualni prikaz - tabulka funkci - vystup
 interpret :: SymbolTable -> Command -> [Command] -> IO SymbolTable
@@ -371,10 +402,12 @@ interpret st (DefineVar name value) _ = do
           return $ insertStLocal st name value
 interpret st (Assign name e) fs = do
           putStrLn "assing var"
-          return $ setSt st name $ eval st e fs
+          res <- eval st e fs
+          return $ setSt st name res
 interpret st (Print e) fs = do
           putStrLn "print var"
-          putStrLn $ show $ eval st e fs
+          res <- eval st e fs
+          putStrLn $ show res
           return st
 interpret st (Scan name) _ = do
           putStrLn "scan var"
@@ -386,21 +419,23 @@ interpret st (Seq (first:others)) fs = do
           putStrLn "seq"
           newst <- interpret st first fs
           interpret newst (Seq others) fs
-interpret st (If e seq1 seq2) fs
-          | evaluateBool st e fs = do
-                         putStrLn "if first"
-                         interpret st seq1 fs
-          | otherwise = do
-                      putStrLn "if second"
-                      interpret st seq2 fs
-interpret st loop@(While e seq) fs
-          | evaluateBool st e fs = do
-                         putStrLn "while loop"
-                         newst <- interpret st seq fs
-                         interpret newst loop fs
-          | otherwise = do
-                      putStrLn "while end"
-                      return st
+interpret st (If e seq1 seq2) fs = do
+          res <- evaluateBool st e fs
+          if res then do
+                      putStrLn "if first"
+                      interpret st seq1 fs
+          else do
+               putStrLn "if second"
+               interpret st seq2 fs
+interpret st loop@(While e seq) fs = do
+          res <- evaluateBool st e fs
+          if res then do
+                      putStrLn "while loop"
+                      newst <- interpret st seq fs
+                      interpret newst loop fs
+          else do
+               putStrLn "while end"
+               return st
 interpret st (MainF seq) fs = do
           putStrLn "main"
           newst <- prepareStForCall st []
