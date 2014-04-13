@@ -241,6 +241,12 @@ getMain [] = error "Yo mama is so dumb, she forgot main!"
 getMain ((Function _ _ _) : asts) = getMain asts
 getMain (m@(MainF _) : _) = m
 
+getFunction :: [Command] -> String -> Command
+getFunction [] _ = error "Cannot find called function"
+getFunction (f@(Function name1 _ _) : asts) name2 =
+        if name1 == name2 then f
+        else getFunction asts name2
+getFunction (_:asts) name2 = getFunction asts name2
 
 parseAep input file =
          case parse aep file input of
@@ -327,72 +333,82 @@ lesser = comp LT
 greater = comp GT
 equal = comp EQ
 
-eval :: SymbolTable -> Expr -> MultiValue
-eval st (ConstInt i) = IntegerValue i
-eval st (ConstDouble d) = DoubleValue d
-eval st (ConstString s) = StringValue s
-eval st (Var v) = getSt st v
-eval st (Add e1 e2) = (eval st e1) `add` (eval st e2)
-eval st (Sub e1 e2) = (eval st e1) `sub` (eval st e2)
-eval st (Mult e1 e2) = (eval st e1) `mult` (eval st e2)
-eval st (Div e1 e2) = (eval st e1) `divide` (eval st e2) -- a co deleni nulou?
-eval st (Lesser e1 e2) = (eval st e1) `lesser` (eval st e2)
-eval st (Greater e1 e2) = (eval st e1) `greater` (eval st e2)
-eval st (Equal e1 e2) = (eval st e1) `equal` (eval st e2)
-eval st (NotEqual e1 e2) = notMultiVal $ (eval st e1) `equal` (eval st e2)
-eval st (LesserOrEqual e1 e2) =
-     ((eval st e1) `lesser` (eval st e2)) `orMultiVal` ((eval st e1) `equal` (eval st e2))
-eval st (GreaterOrEqual e1 e2) =
-     ((eval st e1) `greater` (eval st e2)) `orMultiVal` ((eval st e1) `equal` (eval st e2))
+eval :: SymbolTable -> Expr -> [Command] -> MultiValue
+eval st (ConstInt i) _ = IntegerValue i
+eval st (ConstDouble d) _ = DoubleValue d
+eval st (ConstString s) _ = StringValue s
+eval st (Var v) _ = getSt st v
+eval st (Add e1 e2) fs = (eval st e1 fs) `add` (eval st e2 fs)
+eval st (Sub e1 e2) fs = (eval st e1 fs) `sub` (eval st e2 fs)
+eval st (Mult e1 e2) fs = (eval st e1 fs) `mult` (eval st e2 fs)
+eval st (Div e1 e2) fs = (eval st e1 fs) `divide` (eval st e2 fs) -- a co deleni nulou?
+eval st (Lesser e1 e2) fs = (eval st e1 fs) `lesser` (eval st e2 fs)
+eval st (Greater e1 e2) fs = (eval st e1 fs) `greater` (eval st e2 fs)
+eval st (Equal e1 e2) fs = (eval st e1 fs) `equal` (eval st e2 fs)
+eval st (NotEqual e1 e2) fs = notMultiVal $ (eval st e1 fs) `equal` (eval st e2 fs)
+eval st (LesserOrEqual e1 e2) fs =
+     ((eval st e1 fs) `lesser` (eval st e2 fs)) `orMultiVal` ((eval st e1 fs) `equal` (eval st e2 fs))
+eval st (GreaterOrEqual e1 e2) fs =
+     ((eval st e1 fs) `greater` (eval st e2 fs)) `orMultiVal` ((eval st e1 fs) `equal` (eval st e2 fs))
+--eval st (Call name vars) fs =
+--     case call vars st (getFunction fs name) of
+--          IO val@(IntegerValue i) -> val
+--          IO val@(DoubleValue d) -> val
+--          IO val@(StringValue s) -> val
 
-evaluateBool :: SymbolTable -> Expr -> Bool
-evaluateBool st expr = (eval st expr) /= IntegerValue 0
+--      argumenty - tabulka symbolu - fce
+--call :: [Expr] -> SymbolTable -> Command -> IO MultiValue
+--call name args st functions = do
+--     return $ IntegerValue 0
+
+evaluateBool :: SymbolTable -> Expr -> [Command] -> Bool
+evaluateBool st expr fs = (eval st expr fs) /= IntegerValue 0
 
 --    tabulka symbolu - aktualni prikaz - tabulka funkci - vystup
 interpret :: SymbolTable -> Command -> [Command] -> IO SymbolTable
-interpret st (DefineVar name value) functions = do
+interpret st (DefineVar name value) _ = do
           putStrLn "define var"
           return $ insertStLocal st name value
-interpret st (Assign name e) functions = do
+interpret st (Assign name e) fs = do
           putStrLn "assing var"
-          return $ setSt st name $ eval st e
-interpret st (Print e) functions = do
+          return $ setSt st name $ eval st e fs
+interpret st (Print e) fs = do
           putStrLn "print var"
-          putStrLn $ show $ eval st e
+          putStrLn $ show $ eval st e fs
           return st
-interpret st (Scan name) functions = do
+interpret st (Scan name) _ = do
           putStrLn "scan var"
           return st
-interpret st (Seq []) functions = do
+interpret st (Seq []) _ = do
           putStrLn "last seq"
           return st
-interpret st (Seq (first:others)) functions = do
+interpret st (Seq (first:others)) fs = do
           putStrLn "seq"
-          newst <- interpret st first functions
-          interpret newst (Seq others) functions
-interpret st (If e seq1 seq2) functions
-          | evaluateBool st e = do
+          newst <- interpret st first fs
+          interpret newst (Seq others) fs
+interpret st (If e seq1 seq2) fs
+          | evaluateBool st e fs = do
                          putStrLn "if first"
-                         interpret st seq1 functions
+                         interpret st seq1 fs
           | otherwise = do
                       putStrLn "if second"
-                      interpret st seq2 functions
-interpret st loop@(While e seq) funcions
-          | evaluateBool st e = do
+                      interpret st seq2 fs
+interpret st loop@(While e seq) fs
+          | evaluateBool st e fs = do
                          putStrLn "while loop"
-                         newst <- interpret st seq funcions
-                         interpret newst loop funcions
+                         newst <- interpret st seq fs
+                         interpret newst loop fs
           | otherwise = do
                       putStrLn "while end"
                       return st
-interpret st (MainF seq) functions = do
+interpret st (MainF seq) fs = do
           putStrLn "main"
           newst <- prepareStForCall st []
-          interpret newst seq functions
-interpret st (Function _ params seq) functions = do
+          interpret newst seq fs
+interpret st (Function _ params seq) fs = do
           putStrLn "func call"
           -- newst <- prepareStForCall st params -- TODO: toto ma byt v call, kvuli nastavenejm promenejm
-          interpret st seq functions
+          interpret st seq fs
 --interpret st (Eval e) functions = do
 --          eval st e
 --          return st
