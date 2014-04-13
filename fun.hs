@@ -36,10 +36,9 @@ identifier = P.identifier lexer
 reserved = P.reserved lexer
 reservedOp = P.reservedOp lexer
 
-data Type = Integer | Double | String deriving Show
-data MultiValue = Undefined | IntegerValue Integer | DoubleValue Double | StringValue String deriving Show
+data MultiValue = UndefInt | UndefStr | UndefDouble | IntegerValue Integer | DoubleValue Double | StringValue String deriving Show
 
-data Command = DefineVar String Type -- je potreba taky empty?
+data Command = DefineVar String MultiValue -- je potreba taky empty?
     -- holy fucking shit  
     --          nazev  parametry    telo     to je hnuj
      | Function String [ Command ] Command -- TODO: toto je divny, pujde to tak?
@@ -53,7 +52,7 @@ data Command = DefineVar String Type -- je potreba taky empty?
      -- | If BoolExpr [ Command ] [ Command ]  -- WAT? ono to nejde..
      | While BoolExpr [ Command ]  -- ditto
      | Return Expr
-     | Declare String [ ( String, Type ) ] -- TODO: toto je asi uplne blbe napsany, ale snad z toho bude jasny, co jsme mel na mysli a pak to pujde prepsat spravne
+     | Declare String [ ( String, MultiValue ) ] -- TODO: toto je asi uplne blbe napsany, ale snad z toho bude jasny, co jsme mel na mysli a pak to pujde prepsat spravne
      | Call String [ String ]
      | MainF Command
      deriving Show
@@ -122,15 +121,15 @@ boolExpr = do
 varDeclarationType = do
     reserved "int"
     i <- identifier
-    return $ DefineVar i Integer
+    return $ DefineVar i UndefInt
     <|> do
     reserved "double"
     i <- identifier
-    return $ DefineVar i Double
+    return $ DefineVar i UndefDouble
     <|> do
     reserved "string"
     i <- identifier
-    return $ DefineVar i String
+    return $ DefineVar i UndefStr
     <?> "variable declaration, no semi"
 
 varDeclarationLine = do
@@ -180,7 +179,6 @@ funcBody = do
     _ <- many $ varDeclarationLine
     seq <- many cmd
     return $ Seq seq
-
 
 
 mainAST = do
@@ -263,6 +261,7 @@ setVariableInList (first@(name, _):xs) variable value =
                             Nothing -> Nothing
                             Just a -> Just (first:a)
 
+-- TODO: kontrolovat datovy typy
 -- "tvrda" varianta, ktera promennou nevytvari, jen nastavuje
 setSt :: SymbolTable -> String -> MultiValue -> SymbolTable
 setSt (global, local@(head:rest)) variable value =
@@ -271,6 +270,10 @@ setSt (global, local@(head:rest)) variable value =
                            Nothing -> error $ "Variable \"" ++ variable ++ "\" not in scope"
                            Just result -> (result, local)
            Just result -> (global, (result:rest))
+
+-- TODO: mozna nejaka kontrola neexistence?
+insertStLocal :: SymbolTable -> String -> MultiValue -> SymbolTable
+insertStLocal (global, (head:rest)) name value = (global, ((name, value):head):rest)
 
 add :: MultiValue -> MultiValue -> MultiValue
 add (IntegerValue a) (IntegerValue b) = IntegerValue (a + b)
@@ -288,9 +291,9 @@ mult (DoubleValue a) (DoubleValue b) = DoubleValue (a * b)
 -- TODO: i pro integer s doublem?
 
 -- TODO: nasledujici nefunguji, protoze haskell vymyslela banda kokotu a dva integery se samozrejme nedaji delit
--- divide :: MultiValue -> MultiValue -> MultiValue
--- divide (IntegerValue a) (IntegerValue b) = IntegerValue (a / b) -- TODO: nemusi se tady prevadet z double na integer?
--- divide (DoubleValue a) (DoubleValue b) = DoubleValue (a / b)
+divide :: MultiValue -> MultiValue -> MultiValue
+divide (IntegerValue a) (IntegerValue b) = IntegerValue (quot a  b) -- TODO: nemusi se tady prevadet z double na integer?
+divide (DoubleValue a) (DoubleValue b) = DoubleValue (a / b)
 
 eval :: SymbolTable -> Expr -> MultiValue
 eval st (Const i) = IntegerValue i -- TODO: toto je zatim blbe, nemusi to byt jenom Integer, ale aby to slo zkompilovat...
@@ -298,12 +301,21 @@ eval st (Var v) = getSt st v
 eval st (Add e1 e2) = (eval st e1) `add` (eval st e2)
 eval st (Sub e1 e2) = (eval st e1) `sub` (eval st e2)
 eval st (Mult e1 e2) = (eval st e1) `mult` (eval st e2)
--- eval st (Div e1 e2) = (eval st e1) `divide` (eval st e2) -- a co deleni nulou?
+eval st (Div e1 e2) = (eval st e1) `divide` (eval st e2) -- a co deleni nulou?
 
 interpret :: SymbolTable -> Command -> IO SymbolTable
+interpret st (DefineVar name value) = do
+          return $ insertStLocal st name value
+interpret st (Assign name e) = do
+          return $ setSt st name $ eval st e
 interpret st (Print e) = do
           putStrLn $ show $ eval st e
           return st
+interpret st (Seq []) = do
+          return st
+interpret st (Seq (first:others)) = do
+          newst <- interpret st first
+          interpret newst $ Seq others
 
 main = do
      args <- getArgs
