@@ -56,7 +56,7 @@ data Command = DefineVar String MultiValue -- je potreba taky empty?
      -- | While Expr [ Command ]  -- ditto
      | While Expr Command  -- ditto
      | Return Expr
-     | Declare String [ ( String, MultiValue ) ] -- TODO: toto je asi uplne blbe napsany, ale snad z toho bude jasny, co jsme mel na mysli a pak to pujde prepsat spravne
+     | Declare String [ Command ] -- TODO: toto je asi uplne blbe napsany, ale snad z toho bude jasny, co jsme mel na mysli a pak to pujde prepsat spravne
      -- holy fucking shit
      --          nazev  parametry    telo     to je hnuj
      | Function String [ Command ] Command
@@ -117,11 +117,11 @@ term = do
     return $ Var v
   <|> parens expr
   <?> "term"
-
-funcCallParser = do
-    f <- identifier
-    exprs <- parens $ sepBy expr comma
-    return $ Call f exprs
+  where
+    funcCallParser = do
+      f <- identifier
+      exprs <- parens $ sepBy expr comma
+      return $ Call f exprs
 
 varDeclarationType = do
     reserved "int"
@@ -188,27 +188,13 @@ funcBody = do
     seq <- many cmd
     return $ Seq (vars++seq) -- TODO: toto mozna bude stacit takto?
 
-mainAST = do
-    reserved "int"
-    -- hm...
-    string "main" 
-    -- to zakomentovany haze citelnejsi chybu, ale bez radku a sloupce
-    -- i <- identifier
-    -- if i /= "main"
-    -- then error "Expecting main function"
-    -- else do
-    _ <- parens $ sepBy varDeclarationType comma -- zatim jen placeholder, nevim jak udelat prazdny zavorky
-    seq <- braces $ funcBody
-    return $ MainF seq
-    <?> "main"
-
 -- zatim jen int funkce, poresit nadtyp typu (podobne jak je v pasi.hs to PTypes)
 funcDeclaration = do
   reserved "int"
   i <- identifier
   vars <- parens $ sepBy varDeclarationType comma
   semi  -- nebo _ <- semi ?? kdo vi
-  return $ Function i vars (Seq [])
+  return $ Declare i vars
   <?> "function definition"
 
 funcDefinition = do
@@ -218,7 +204,8 @@ funcDefinition = do
   seq <- braces $ funcBody
   if i /= "main"
   then return $ Function i vars seq
-  else return $ MainF seq
+  else if (length vars) /= 0 then error "Main function cannot have arguments"
+       else return $ MainF seq
   <?> "function declaration"  
 
 
@@ -237,12 +224,6 @@ aep = do
     eof
     return asts
     <?> "aep"
-
-
-getMain :: [Command] -> Command
-getMain [] = error "Yo mama is so dumb, she forgot main!"
-getMain ((Function _ _ _) : asts) = getMain asts
-getMain (m@(MainF _) : _) = m
 
 getFunction :: [Command] -> String -> Command
 getFunction [] _ = error "Cannot find called function"
@@ -291,6 +272,14 @@ insertStLocal (global, (head:rest)) name value = (global, ((name, value):head):r
 prepareStForCall :: SymbolTable -> [Command] -> IO SymbolTable
 prepareStForCall (global, local) defs = do
                  interpret (global, ([]:local)) (Seq defs) []
+
+clearStLocals :: SymbolTable -> SymbolTable
+clearStLocals (global, (act:locals)) = (global, locals)
+
+insertStRetVal :: SymbolTable -> MultiValue -> SymbolTable
+insertStRetVal st val = insertStRetVal' (clearStLocals st) val
+                        where
+                          insertStRetVal' (globals, locals) val = (globals, [("retval", val)]:locals)
 
 add :: MultiValue -> MultiValue -> MultiValue
 add (IntegerValue a) (IntegerValue b) = IntegerValue (a + b)
@@ -381,22 +370,47 @@ eval st (GreaterOrEqual e1 e2) fs = do
      first <- (eval st e1 fs)
      second <- (eval st e2 fs)
      return $ (first `greater` second) `orMultiVal` (first `equal` second)
---eval st (Call name vars) fs =
---     case call vars st (getFunction fs name) of
---          IO val@(IntegerValue i) -> val
---          IO val@(DoubleValue d) -> val
---          IO val@(StringValue s) -> val
-
---      argumenty - tabulka symbolu - fce
---call :: [Expr] -> SymbolTable -> Command -> IO MultiValue
---call name args st functions = do
---     return $ IntegerValue 0
+eval st (Call name vars) fs = do
+  putStrLn "call called"
+  return $ IntegerValue 0
+  -- TODO: eval args, prepareForCall, set args, interpret, vyzvednuti retval, clearStLocals, return retval
 
 evaluateBool :: SymbolTable -> Expr -> [Command] -> IO Bool
 evaluateBool st expr fs = do
              res <- (eval st expr fs)
              if  res /= IntegerValue 0 then return True
              else return False
+
+scan :: SymbolTable -> String -> IO SymbolTable
+scan st name = do
+  nval <- scan' $ getSt st name
+  return $ setSt st name nval
+  where
+    scan' :: MultiValue -> IO MultiValue
+    scan' (IntegerValue _) = do
+      i <- readLn :: IO Integer
+      return $ IntegerValue i
+    scan' UndefInt = do
+      i <- readLn :: IO Integer
+      return $ IntegerValue i
+    scan' (DoubleValue _) = do
+      d <- readLn :: IO Double
+      return $ DoubleValue d
+    scan' UndefDouble = do
+      d <- readLn :: IO Double
+      return $ DoubleValue d
+    scan' (StringValue _) = do
+      s <- getLine
+      return $ StringValue s
+    scan' UndefStr = do
+      s <- getLine
+      return $ StringValue s
+
+--realityCheck :: [Command] -> Bool
+--realityCheck [] = True
+--realityCheck (head:tail) = (checkCollision head tail) && realityCheck tail
+--                           where
+--                             checkCollision 
 
 --    tabulka symbolu - aktualni prikaz - tabulka funkci - vystup
 interpret :: SymbolTable -> Command -> [Command] -> IO SymbolTable
@@ -410,18 +424,30 @@ interpret st (Assign name e) fs = do
 interpret st (Print e) fs = do
           putStrLn "print var"
           res <- eval st e fs
-          putStrLn $ show res
+          showVal res
           return st
+          where
+            showVal (IntegerValue i) = do putStrLn $ show i
+            showVal (DoubleValue d) = do putStrLn $ show d
+            showVal (StringValue s) = do putStrLn s
+            showVal _ = error "Trying to print undefined variable"
 interpret st (Scan name) _ = do
           putStrLn "scan var"
-          return st
+          newst <- scan st name
+          return newst
 interpret st (Seq []) _ = do
           putStrLn "last seq"
           return st
 interpret st (Seq (first:others)) fs = do
           putStrLn "seq"
-          newst <- interpret st first fs
-          interpret newst (Seq others) fs
+          turboEncabulator first others fs
+          where
+            turboEncabulator (Return e) _ fs = do
+               res <- eval st e fs
+               return $ insertStRetVal st res
+            turboEncabulator command others fs = do
+               newst <- interpret st first fs
+               interpret newst (Seq others) fs
 interpret st (If e seq1 seq2) fs = do
           res <- evaluateBool st e fs
           if res then do
@@ -464,3 +490,9 @@ main = do
           let asts = parseAep input fileName
           putStrLn $ show asts
           interpret ([],[[]]) (getMain asts) asts -- prvni je tabulka symbolu, druhe tabulka funkci?
+     where
+       getMain :: [Command] -> Command
+       getMain [] = error "Main function missing"
+       getMain ((Function _ _ _) : asts) = getMain asts
+       getMain (m@(MainF _) : _) = m
+       getMain (_:asts) = getMain asts

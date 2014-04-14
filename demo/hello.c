@@ -1,3 +1,5 @@
+int test(int a);
+
 int test(int a){
 	return a;
 }
