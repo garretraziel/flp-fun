@@ -477,10 +477,13 @@ interpret st (Seq (first:others)) fs = do
           where
             turboEncabulator (Return e) _ fs = do
                res <- eval st e fs
-               return $ insertStRetVal (fst res) (snd res)
+               return $ returner (insertStRetVal (fst res) (snd res)) (snd res)
             turboEncabulator command others fs = do
                newst <- interpret st first fs
                interpret newst (Seq others) fs
+            returner (g,l) result = (g,returner' l result)
+            returner' (l:[]) result = [[("retval", result)]]
+            returner' (l:ls) result = l:returner' ls result
 interpret st (If e seq1 seq2) fs = do
           res <- evaluateBool st e fs
           if (snd res) then do
