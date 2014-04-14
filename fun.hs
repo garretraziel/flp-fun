@@ -86,9 +86,13 @@ data Expr = ConstInt Integer
 type VariableTable = [(String,MultiValue)]
 type GlobalTable = VariableTable
 type LocalTable = [VariableTable]
-type SymbolTable = (GlobalTable,LocalTable)
+type SymbolTable = (GlobalTable,LocalTable,MultiValue)
 
 type StAndValue = (SymbolTable,MultiValue)
+
+fst' (g,_,_) = g
+snd' (_,l,_) = l
+thr' (_,_,r) = r
 
 expr = buildExpressionParser operators term where
   operators = [
@@ -244,13 +248,13 @@ parseAep input file =
               Right ast -> ast
 
 getSt :: SymbolTable -> String -> MultiValue
-getSt ([], ([]:_)) variable = error $ "Variable \"" ++ variable ++ "\" not in scope"
-getSt ([], (((name, value):xs):rest)) variable =
+getSt ([], ([]:_), _) variable = error $ "Variable \"" ++ variable ++ "\" not in scope"
+getSt ([], (((name, value):xs):rest), r) variable =
   if variable == name then value
-  else getSt ([], (xs:rest)) variable
-getSt (((name, value):xs), rest) variable =
+  else getSt ([], (xs:rest), r) variable
+getSt (((name, value):xs), rest, r) variable =
   if variable == name then value
-  else getSt (xs, rest) variable
+  else getSt (xs, rest, r) variable
 
 setVariableInList :: VariableTable -> String -> MultiValue -> Maybe VariableTable
 setVariableInList [] variable _ = Nothing
@@ -263,29 +267,27 @@ setVariableInList (first@(name, _):xs) variable value =
 -- TODO: kontrolovat datovy typy
 -- "tvrda" varianta, ktera promennou nevytvari, jen nastavuje
 setSt :: SymbolTable -> String -> MultiValue -> SymbolTable
-setSt (global, local@(head:rest)) variable value =
+setSt (global, local@(head:rest), r) variable value =
       case setVariableInList head variable value of
            Nothing -> case setVariableInList global variable value of
                            Nothing -> error $ "Variable \"" ++ variable ++ "\" not in scope"
-                           Just result -> (result, local)
-           Just result -> (global, (result:rest))
+                           Just result -> (result, local, r)
+           Just result -> (global, (result:rest), r)
 
 -- TODO: mozna nejaka kontrola neexistence?
 insertStLocal :: SymbolTable -> String -> MultiValue -> SymbolTable
-insertStLocal (global, (head:rest)) name value = (global, ((name, value):head):rest)
+insertStLocal (global, (head:rest), r) name value = (global, ((name, value):head):rest, r)
 
 -- TODO: taky prebirat funkci a rovnou vytvorit a naplnit argumenty
 prepareStForCall :: SymbolTable -> [Command] -> IO SymbolTable
-prepareStForCall (global, local) defs = do
-  interpret (global, ([]:local)) (Seq defs) []
-
-clearStLocals :: SymbolTable -> SymbolTable
-clearStLocals (global, (act:locals)) = (global, locals)
+prepareStForCall (global, local, r) defs = do
+  interpret (global, ([]:local), r) (Seq defs) []
 
 insertStRetVal :: SymbolTable -> MultiValue -> SymbolTable
-insertStRetVal st val = insertStRetVal' (clearStLocals st) val
-                        where
-                          insertStRetVal' (globals, locals) val = (globals, [("retval", val)]:locals)
+insertStRetVal (globals,locals,_) val = (globals,locals,val)
+
+returnStFromFunction :: SymbolTable -> StAndValue
+returnStFromFunction (globals, _:locals, r) = ((globals, locals, UndefInt), r)
 
 add :: MultiValue -> MultiValue -> MultiValue
 add (IntegerValue a) (IntegerValue b) = IntegerValue (a + b)
@@ -380,11 +382,10 @@ eval st (Call name vars) fs = do
 --  return $ (st, IntegerValue 0)
   evaledArgs <- evalArgs st vars fs
   emptyFrameSt <- prepareStForCall (fst evaledArgs) (getFuncArgs fs name)
-  let local_stack = (snd emptyFrameSt)!!0
+  let local_stack = (snd' emptyFrameSt)!!0
   framest <- fillVars emptyFrameSt (snd evaledArgs) local_stack
-  putStrLn $ show framest
   newst <- interpret framest (getFunction fs name) fs
-  return ((clearStLocals newst), (getSt newst "retval"))
+  return $ returnStFromFunction newst
   where
     evalArgs st [] fs = return $ (st, [])
     evalArgs st (x:xs) fs = do
@@ -456,7 +457,8 @@ interpret st (Scan name) _ = do
 interpret st (Seq []) _ = do
           return st
 interpret st (Seq (first:others)) fs = do
-          turboEncabulator first others fs
+          if thr' st /= UndefInt then return $ st
+          else turboEncabulator first others fs
           where
             turboEncabulator (Return e) _ fs = do
                res <- eval st e fs
@@ -490,7 +492,7 @@ interpret st _ _ = do
           putStrLn "other"
           return st
 
-createSt = ([],[[]])
+createSt = ([],[[]],UndefInt)
 
 main = do
      args <- getArgs
@@ -500,8 +502,6 @@ main = do
           let fileName = args!!0
           input <- readFile fileName
           let (globs, asts) = parseAep input fileName
-          putStrLn $ show asts
-          putStrLn $ show globs
           preparedSt <- prepareSt createSt globs 
           interpret preparedSt (getMain asts) asts -- prvni je tabulka symbolu, druhe tabulka funkci?
      where
@@ -511,5 +511,5 @@ main = do
        getMain (m@(MainF _) : _) = m
        getMain (_:asts) = getMain asts
        prepareSt st globs = do
-           (g,l:_) <- interpret createSt (Seq globs) []
-           return $ (l,[[]]) 
+           (g,l:_,r) <- interpret createSt (Seq globs) []
+           return $ (l,[[]],r)
