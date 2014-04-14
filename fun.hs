@@ -429,6 +429,21 @@ scan st name = do
       s <- getLine
       return $ StringValue s
 
+-- otestovat:
+-- 1. jestli je funkce deklarovana maximalne jednou (a pred definici?)
+-- 2. jestli je funkce definovana prave jednou
+-- 3. jestli v deklaraci a definici souhlasi pocet a typ argumentu a navratova hodnota
+-- 4. jestli je kazda globalni promenna deklarovana prave jednou
+--
+-- na urovni funkci pak:
+-- 5. jestli pouzita promenna existuje
+-- 6. jestli jestli je kazda promenna deklarovana prave jednou
+-- 7. jestli byla deklarovana/definovana volana funkce
+-- 8. jestli soulasi pocet a typ argumentu volani funkce
+-- 9. typova kontrola operaci
+-- 10. typova kontrola assignu
+-- 11. typova kontrola navratu funkce
+-- 12. nejak resit pretypovani u volani integer -> double
 --realityCheck :: [Command] -> Bool
 --realityCheck [] = True
 --realityCheck (head:tail) = (checkCollision head tail) && realityCheck tail
