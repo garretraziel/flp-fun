@@ -86,7 +86,7 @@ fst' (g,_,_) = g
 snd' (_,l,_) = l
 thr' (_,_,r) = r
 
-expr = buildExpressionParser operators term where
+expr vars = buildExpressionParser operators (term vars) where
   operators = [
       [ op "*" Mult, op "/" Div ],
       [ op "+" Add, op "-" Sub ],
@@ -96,7 +96,7 @@ expr = buildExpressionParser operators term where
   op name fun =
     Infix ( do { reservedOp name; return fun } ) AssocLeft
 
-term = do
+term vars = do
     i <- integer
     return $ ConstInt $ fromInteger i
   <|> do
@@ -109,13 +109,15 @@ term = do
     try funcCallParser
   <|> do
     v <- identifier
-    return $ Var v
-  <|> parens expr
+    if not (isMember v vars) then error ("Use of undeclared variable " ++ (show v))
+    else do
+      return $ Var v
+  <|> parens (expr vars)
   <?> "term"
   where
     funcCallParser = do
       f <- identifier
-      exprs <- parens $ sepBy expr comma
+      exprs <- parens $ sepBy (expr vars) comma
       return $ Call f exprs
 
 varDeclarationType = do
@@ -138,9 +140,9 @@ varDeclarationLine = do
   return var
   <?> "variable declaration, one per line"           
 
-cmd = do
+cmd vars = do
     reserved "print"
-    e <- parens $ expr
+    e <- parens $ expr vars
     semi
     return $ Print e
     <|> do
@@ -152,23 +154,23 @@ cmd = do
     try identifierParser
     <|> do
     reserved "if"
-    b <- parens $ expr
-    seq1 <- braces $ many cmd
+    b <- parens $ expr vars
+    seq1 <- braces $ many $ cmd vars
     reserved "else"
-    seq2 <- braces $ many cmd
+    seq2 <- braces $ many $ cmd vars
     return $ If b (Seq seq1) (Seq seq2)
     <|> do
     reserved "while"
-    b <- parens $ expr
-    seq <- braces $ many cmd
+    b <- parens $ expr vars
+    seq <- braces $ many $ cmd vars
     return $ While b (Seq seq)
     <|> do
     reserved "return"
-    e <- expr
+    e <- expr vars
     semi
     return $ Return e
     <|> do
-    e <- expr
+    e <- expr vars
     semi
     return $ Eval e
     <?> "command"
@@ -176,16 +178,16 @@ cmd = do
       identifierParser = do
         i <- identifier
         reserved "="
-        e <- expr
+        e <- expr vars
         semi
         return $ Assign i e
 
 -- toto jeste zmenit
-funcBody = do
+funcBody args = do
     vars <- many $ varDeclarationLine
-    if not (checkVars vars) then error "Duplicate definition of variables"
+    if not (checkVars (vars++args)) then error "Duplicate definition of variables"
     else do
-         seq <- many cmd
+         seq <- many $ cmd (vars ++ args)
          return $ Seq (vars++seq) -- TODO: toto mozna bude stacit takto?
 
 checkVars :: [Command] -> Bool
@@ -196,6 +198,12 @@ checkVars (x:xs) = checkVars' x xs
             checkVars' a@(DefineVar name1 _) (b@(DefineVar name2 _):xs) =
               if name1 == name2 then False
               else (checkVars' a xs) && (checkVars' b xs)
+
+isMember :: String -> [Command] -> Bool
+isMember _ [] = False
+isMember name1 ((DefineVar name2 _):xs) =
+         if name1 == name2 then True
+         else isMember name1 xs
 
 -- zatim jen int funkce, poresit nadtyp typu (podobne jak je v pasi.hs to PTypes)
 funcDeclaration = do
@@ -210,7 +218,7 @@ funcDefinition = do
   reserved "int"
   i <- identifier
   vars <- parens $ sepBy varDeclarationType comma
-  seq <- braces $ funcBody
+  seq <- braces $ funcBody vars
   if i /= "main"
   then return $ Function i vars seq
   else if (length vars) /= 0 then error "Main function cannot have arguments"
@@ -229,10 +237,10 @@ aep = do
     globals <- many $ try varDeclarationLine
     if not (checkVars globals) then error "Multiple definition of same global variable"
     else do
-         asts <- many funcAST
-         -- main <- mainAST
-         eof
-         return (globals, asts)
+    asts <- many funcAST
+    -- main <- mainAST
+    eof
+    return (globals, asts)
     <?> "aep"
 
 getFunction :: [Command] -> String -> Command
