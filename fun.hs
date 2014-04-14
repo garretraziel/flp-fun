@@ -52,8 +52,6 @@ data Command = DefineVar String MultiValue -- je potreba taky empty?
      -- -| If BoolExpr (Seq [ Command ]) (Seq [ Command ]) -- WAT? ono to nejde..
      -- tak jinak
      | If Expr Command Command
-     -- | If BoolExpr [ Command ] [ Command ]  -- WAT? ono to nejde..
-     -- | While Expr [ Command ]  -- ditto
      | While Expr Command  -- ditto
      | Return Expr
      | Declare String [ Command ] -- TODO: toto je asi uplne blbe napsany, ale snad z toho bude jasny, co jsme mel na mysli a pak to pujde prepsat spravne
@@ -373,6 +371,12 @@ eval st (GreaterOrEqual e1 e2) fs = do
 eval st (Call name vars) fs = do
   putStrLn "call called"
   return $ IntegerValue 0
+--  evaledArgs <- [eval e | e <- vars]
+--  varCommands <- funcTablrLookup fs name
+--  framest <- fillVars (prepareStForCall st varCommands) evaledArgs
+--  newst <- interpret framest (getFunction name) fs
+--  retval <- getRetVal newst
+--  return retval
   -- TODO: eval args, prepareForCall, set args, interpret, vyzvednuti retval, clearStLocals, return retval
 
 evaluateBool :: SymbolTable -> Expr -> [Command] -> IO Bool

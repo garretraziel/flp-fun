@@ -12,6 +12,7 @@ int main(){
 	} else {
                 a = test(2);
 		print(a);
+		2+3;
 	}
 	return 0;
 }
