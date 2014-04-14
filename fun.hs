@@ -280,7 +280,10 @@ prepareStForCall (global, local) defs = do
   interpret (global, ([]:local)) (Seq defs) []
 
 clearStLocals :: SymbolTable -> SymbolTable
-clearStLocals (global, (act:locals)) = (global, locals)
+clearStLocals (global, (act:locals)) = (global, godzilla locals)
+  where
+    godzilla (_:[]) = [[]]
+    godzilla (l:ls) = l:godzilla ls
 
 insertStRetVal :: SymbolTable -> MultiValue -> SymbolTable
 insertStRetVal st val = insertStRetVal' (clearStLocals st) val
@@ -456,14 +459,19 @@ interpret st (Scan name) _ = do
 interpret st (Seq []) _ = do
           return st
 interpret st (Seq (first:others)) fs = do
-          turboEncabulator first others fs
+          if length (last (snd st)) /= 0 then do
+            return st
+          else turboEncabulator first others fs
           where
             turboEncabulator (Return e) _ fs = do
                res <- eval st e fs
-               return $ insertStRetVal (fst res) (snd res)
+               return $ returner (insertStRetVal (fst res) (snd res)) (snd res)
             turboEncabulator command others fs = do
                newst <- interpret st first fs
                interpret newst (Seq others) fs
+            returner (g,l) result = (g,returner' l result)
+            returner' (l:[]) result = [[("retval", result)]]
+            returner' (l:ls) result = l:returner' ls result
 interpret st (If e seq1 seq2) fs = do
           res <- evaluateBool st e fs
           if (snd res) then do
