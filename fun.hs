@@ -44,44 +44,36 @@ data MultiValue = UndefInt
      | StringValue String
      deriving (Show, Eq)
 
-data Command = DefineVar String MultiValue -- je potreba taky empty?
+data Command = DefineVar String MultiValue
      | Assign String Expr
      | Print Expr
      | Scan String
-     | Seq [ Command ] -- hele je seq vubec potreba? odpovim si sam, asi je
-     -- -| If BoolExpr (Seq [ Command ]) (Seq [ Command ]) -- WAT? ono to nejde..
-     -- tak jinak
+     | Seq [ Command ]
      | If Expr Command Command
      | While Expr Command  -- ditto
      | Return Expr
-     | Declare String [ Command ] -- TODO: toto je asi uplne blbe napsany, ale snad z toho bude jasny, co jsme mel na mysli a pak to pujde prepsat spravne
-     -- holy fucking shit
-     --          nazev  parametry    telo     to je hnuj
      | Function String [ Command ] Command
      | MainF Command
-     | Eval Expr -- kvuli funccall
+     | Eval Expr
+     | Declare String [ Command ]
      deriving Show
 
 data Expr = ConstInt Integer
-  | ConstDouble Double
-  | ConstString String
-  | Var String
-  | Add Expr Expr
-  | Sub Expr Expr
-  | Mult Expr Expr
-  | Div Expr Expr
-  | Equal Expr Expr
-  | NotEqual Expr Expr
-  | Greater Expr Expr
-  | Lesser Expr Expr
-  | GreaterOrEqual Expr Expr
-  | LesserOrEqual Expr Expr
-  | Call String [Expr]
-  deriving Show
-
--- ------------------------------------------------------------------------- --
--- ------------------------- SYMBOL TABLE OPERATIONS ----------------------- --
--- ------------------------------------------------------------------------- --
+     | ConstDouble Double
+     | ConstString String
+     | Var String
+     | Add Expr Expr
+     | Sub Expr Expr
+     | Mult Expr Expr
+     | Div Expr Expr
+     | Equal Expr Expr
+     | NotEqual Expr Expr
+     | Greater Expr Expr
+     | Lesser Expr Expr
+     | GreaterOrEqual Expr Expr
+     | LesserOrEqual Expr Expr
+     | Call String [ Expr ]
+     deriving Show
 
 type VariableTable = [(String,MultiValue)]
 type GlobalTable = VariableTable
@@ -161,7 +153,7 @@ cmd = do
     <|> do
     reserved "if"
     b <- parens $ expr
-    seq1 <- braces $ many cmd -- TODO: toto mozna udelat zvlast jako parsovani seq? ale jak?
+    seq1 <- braces $ many cmd
     reserved "else"
     seq2 <- braces $ many cmd
     return $ If b (Seq seq1) (Seq seq2)
@@ -244,11 +236,6 @@ getFuncArgs ((Function name1 args _) : asts) name2 =
         if name1 == name2 then args
         else getFuncArgs asts name2
 getFuncArgs (_:asts) name2 = getFuncArgs asts name2
-
-parseAep input file =
-         case parse aep file input of
-              Left e -> error $ show e
-              Right ast -> ast
 
 getSt :: SymbolTable -> String -> MultiValue
 getSt ([], ([]:_), _) variable = error $ "Variable \"" ++ variable ++ "\" not in scope"
@@ -498,10 +485,8 @@ interpret st loop@(While e seq) fs = do
           else do
                return $ fst res
 interpret st (MainF seq) fs = do
-          newst <- prepareStForCall st []
-          interpret newst seq fs
+          interpret st seq fs
 interpret st (Function _ params seq) fs = do
-          -- newst <- prepareStForCall st params -- TODO: toto ma byt v call, kvuli nastavenejm promenejm
           interpret st seq fs
 interpret st (Eval e) fs = do
           evaled <- eval st e fs
@@ -510,7 +495,10 @@ interpret st _ _ = do
           putStrLn "other"
           return st
 
-createSt = ([],[[]],UndefInt)
+parseAep input file =
+         case parse aep file input of
+              Left e -> error $ show e
+              Right ast -> ast
 
 main = do
      args <- getArgs
@@ -521,7 +509,7 @@ main = do
           input <- readFile fileName
           let (globs, asts) = parseAep input fileName
           preparedSt <- prepareSt createSt globs 
-          interpret preparedSt (getMain asts) asts -- prvni je tabulka symbolu, druhe tabulka funkci?
+          interpret preparedSt (getMain asts) asts
      where
        getMain :: [Command] -> Command
        getMain [] = error "Main function missing"
@@ -531,3 +519,4 @@ main = do
        prepareSt st globs = do
            (g,l:_,r) <- interpret createSt (Seq globs) []
            return $ (l,[[]],r)
+       createSt = ([],[[]],UndefInt)
