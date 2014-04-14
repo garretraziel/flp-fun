@@ -183,8 +183,19 @@ cmd = do
 -- toto jeste zmenit
 funcBody = do
     vars <- many $ varDeclarationLine
-    seq <- many cmd
-    return $ Seq (vars++seq) -- TODO: toto mozna bude stacit takto?
+    if not (checkVars vars) then error "Duplicate definition of variables"
+    else do
+         seq <- many cmd
+         return $ Seq (vars++seq) -- TODO: toto mozna bude stacit takto?
+
+checkVars :: [Command] -> Bool
+checkVars [] = True
+checkVars (x:xs) = checkVars' x xs
+          where
+            checkVars' (DefineVar _ _) [] = True
+            checkVars' a@(DefineVar name1 _) (b@(DefineVar name2 _):xs) =
+              if name1 == name2 then False
+              else (checkVars' a xs) && (checkVars' b xs)
 
 -- zatim jen int funkce, poresit nadtyp typu (podobne jak je v pasi.hs to PTypes)
 funcDeclaration = do
@@ -204,8 +215,7 @@ funcDefinition = do
   then return $ Function i vars seq
   else if (length vars) /= 0 then error "Main function cannot have arguments"
        else return $ MainF seq
-  <?> "function declaration"  
-
+  <?> "function declaration"
 
 funcAST = do
   -- jestli chapu dobre, try je dobrej k look ahead
@@ -217,10 +227,12 @@ funcAST = do
 aep = do
     whiteSpace
     globals <- many $ try varDeclarationLine
-    asts <- many funcAST
-    -- main <- mainAST 
-    eof
-    return (globals, asts)
+    if not (checkVars globals) then error "Multiple definition of same global variable"
+    else do
+         asts <- many funcAST
+         -- main <- mainAST
+         eof
+         return (globals, asts)
     <?> "aep"
 
 getFunction :: [Command] -> String -> Command
@@ -239,9 +251,9 @@ getFuncArgs (_:asts) name2 = getFuncArgs asts name2
 
 getSt :: SymbolTable -> String -> MultiValue
 getSt ([], ([]:_), _) variable = error $ "Variable \"" ++ variable ++ "\" not in scope"
-getSt ([], (((name, value):xs):rest), r) variable =
+getSt (global, (((name, value):xs):rest), r) variable =
   if variable == name then value
-  else getSt ([], (xs:rest), r) variable
+  else getSt (global, (xs:rest), r) variable
 getSt (((name, value):xs), rest, r) variable =
   if variable == name then value
   else getSt (xs, rest, r) variable
@@ -298,6 +310,7 @@ divide :: MultiValue -> MultiValue -> MultiValue
 divide (IntegerValue a) (IntegerValue b) = IntegerValue (quot a  b) -- TODO: nemusi se tady prevadet z double na integer?
 divide (DoubleValue a) (DoubleValue b) = DoubleValue (a / b)
 
+-- TODO: oduvodnit do dokumentace !!!
 comp :: Ordering -> MultiValue -> MultiValue -> MultiValue
 comp order (IntegerValue a) (IntegerValue b) =
      if (compare a b) == order then IntegerValue 1
