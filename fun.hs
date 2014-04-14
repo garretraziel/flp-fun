@@ -157,11 +157,7 @@ cmd = do
     semi
     return $ Scan i
     <|> do
-    i <- identifier
-    reserved "="
-    e <- expr
-    semi
-    return $ Assign i e
+    try identifierParser
     <|> do
     reserved "if"
     b <- parens $ expr
@@ -184,6 +180,13 @@ cmd = do
     semi
     return $ Eval e
     <?> "command"
+    where
+      identifierParser = do
+        i <- identifier
+        reserved "="
+        e <- expr
+        semi
+        return $ Assign i e
 
 -- toto jeste zmenit
 funcBody = do
