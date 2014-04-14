@@ -1,7 +1,9 @@
 int test(int a);
 
 int test(int a){
-	return a;
+	int b;
+	b = 10;
+	return a*b;
 }
 
 int main(){

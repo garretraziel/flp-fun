@@ -79,7 +79,6 @@ data Expr = ConstInt Integer
   | Call String [Expr]
   deriving Show
 
-
 -- ------------------------------------------------------------------------- --
 -- ------------------------- SYMBOL TABLE OPERATIONS ----------------------- --
 -- ------------------------------------------------------------------------- --
@@ -88,6 +87,8 @@ type VariableTable = [(String,MultiValue)]
 type GlobalTable = VariableTable
 type LocalTable = [VariableTable]
 type SymbolTable = (GlobalTable,LocalTable)
+
+type StAndValue = (SymbolTable,MultiValue)
 
 expr = buildExpressionParser operators term where
   operators = [
@@ -216,11 +217,11 @@ funcAST = do
 
 aep = do
     whiteSpace
-    _ <- many $ try varDeclarationLine
+    globals <- many $ try varDeclarationLine
     asts <- many funcAST
     -- main <- mainAST 
     eof
-    return asts
+    return (globals, asts)
     <?> "aep"
 
 getFunction :: [Command] -> String -> Command
@@ -229,6 +230,13 @@ getFunction (f@(Function name1 _ _) : asts) name2 =
         if name1 == name2 then f
         else getFunction asts name2
 getFunction (_:asts) name2 = getFunction asts name2
+
+getFuncArgs :: [Command] -> String -> [Command]
+getFuncArgs [] _ = error "Cannot find called function"
+getFuncArgs ((Function name1 args _) : asts) name2 =
+        if name1 == name2 then args
+        else getFuncArgs asts name2
+getFuncArgs (_:asts) name2 = getFuncArgs asts name2
 
 parseAep input file =
          case parse aep file input of
@@ -269,7 +277,7 @@ insertStLocal (global, (head:rest)) name value = (global, ((name, value):head):r
 -- TODO: taky prebirat funkci a rovnou vytvorit a naplnit argumenty
 prepareStForCall :: SymbolTable -> [Command] -> IO SymbolTable
 prepareStForCall (global, local) defs = do
-                 interpret (global, ([]:local)) (Seq defs) []
+  interpret (global, ([]:local)) (Seq defs) []
 
 clearStLocals :: SymbolTable -> SymbolTable
 clearStLocals (global, (act:locals)) = (global, locals)
@@ -323,67 +331,77 @@ lesser = comp LT
 greater = comp GT
 equal = comp EQ
 
-eval :: SymbolTable -> Expr -> [Command] -> IO MultiValue
-eval st (ConstInt i) _ = return $ IntegerValue i
-eval st (ConstDouble d) _ = return $ DoubleValue d
-eval st (ConstString s) _ = return $ StringValue s
-eval st (Var v) _ = return $ getSt st v
+eval :: SymbolTable -> Expr -> [Command] -> IO StAndValue
+eval st (ConstInt i) _ = return $ (st, IntegerValue i)
+eval st (ConstDouble d) _ = return $ (st, DoubleValue d)
+eval st (ConstString s) _ = return $ (st, StringValue s)
+eval st (Var v) _ = return $ (st, getSt st v)
 eval st (Add e1 e2) fs = do
-     first <- (eval st e1 fs)
-     second <- (eval st e2 fs)
-     return $ first `add` second
+  op1 <- (eval st e1 fs)
+  op2 <- (eval (fst op1) e2 fs)
+  return $ (fst op2, (snd op1) `add` (snd op2))
 eval st (Sub e1 e2) fs = do
-     first <- (eval st e1 fs)
-     second <- (eval st e2 fs)
-     return $ first `sub` second
+  op1 <- (eval st e1 fs)
+  op2 <- (eval (fst op1) e2 fs)
+  return $ (fst op2, (snd op1) `sub` (snd op2))
 eval st (Mult e1 e2) fs = do
-     first <- (eval st e1 fs)
-     second <- (eval st e2 fs)
-     return $ first `mult` second
+  op1 <- (eval st e1 fs)
+  op2 <- (eval (fst op1) e2 fs)
+  return $ (fst op2, (snd op1) `mult` (snd op2))
 eval st (Div e1 e2) fs = do
-     first <- (eval st e1 fs)
-     second <- (eval st e2 fs)
-     return $ first `divide` second -- a co deleni nulou?
+  op1 <- (eval st e1 fs)
+  op2 <- (eval (fst op1) e2 fs)
+  return $ (fst op2, (snd op1) `divide` (snd op2))
 eval st (Lesser e1 e2) fs = do
-     first <- (eval st e1 fs)
-     second <- (eval st e2 fs)
-     return $ first `lesser` second
+  op1 <- (eval st e1 fs)
+  op2 <- (eval (fst op1) e2 fs)
+  return $ (fst op2, (snd op1) `lesser` (snd op2))
 eval st (Greater e1 e2) fs = do
-     first <- (eval st e1 fs)
-     second <- (eval st e2 fs)
-     return $ first `greater` second
+  op1 <- (eval st e1 fs)
+  op2 <- (eval (fst op1) e2 fs)
+  return $ (fst op2, (snd op1) `greater` (snd op2))
 eval st (Equal e1 e2) fs = do
-     first <- (eval st e1 fs)
-     second <- (eval st e2 fs)
-     return $ first `equal` second
+  op1 <- (eval st e1 fs)
+  op2 <- (eval (fst op1) e2 fs)
+  return $ (fst op2, (snd op1) `equal` (snd op2))
 eval st (NotEqual e1 e2) fs = do
-     first <- (eval st e1 fs)
-     second <- (eval st e2 fs)
-     return $ notMultiVal $ first `equal` second
+  op1 <- (eval st e1 fs)
+  op2 <- (eval (fst op1) e2 fs)
+  return $ (fst op2, notMultiVal $ (snd op1) `equal` (snd op2))
 eval st (LesserOrEqual e1 e2) fs = do
-     first <- (eval st e1 fs)
-     second <- (eval st e2 fs)
-     return $ (first `lesser` second) `orMultiVal` (first `equal` second)
+  op1 <- (eval st e1 fs)
+  op2 <- (eval (fst op1) e2 fs)
+  return $ (fst op2, ((snd op1) `lesser` (snd op2)) `orMultiVal` ((snd op1) `equal` (snd op2)))
 eval st (GreaterOrEqual e1 e2) fs = do
-     first <- (eval st e1 fs)
-     second <- (eval st e2 fs)
-     return $ (first `greater` second) `orMultiVal` (first `equal` second)
+  op1 <- (eval st e1 fs)
+  op2 <- (eval (fst op1) e2 fs)
+  return $ (fst op2, ((snd op1) `greater` (snd op2)) `orMultiVal` ((snd op1) `equal` (snd op2)))
 eval st (Call name vars) fs = do
-  putStrLn "call called"
-  return $ IntegerValue 0
---  evaledArgs <- [eval e | e <- vars]
---  varCommands <- funcTablrLookup fs name
---  framest <- fillVars (prepareStForCall st varCommands) evaledArgs
---  newst <- interpret framest (getFunction name) fs
---  retval <- getRetVal newst
---  return retval
-  -- TODO: eval args, prepareForCall, set args, interpret, vyzvednuti retval, clearStLocals, return retval
+--  return $ (st, IntegerValue 0)
+  evaledArgs <- evalArgs st vars fs
+  emptyFrameSt <- prepareStForCall (fst evaledArgs) (getFuncArgs fs name)
+  let local_stack = (snd emptyFrameSt)!!0
+  framest <- fillVars emptyFrameSt (snd evaledArgs) local_stack
+  putStrLn $ show framest
+  newst <- interpret framest (getFunction fs name) fs
+  return ((clearStLocals newst), (getSt newst "retval"))
+  where
+    evalArgs st [] fs = return $ (st, [])
+    evalArgs st (x:xs) fs = do
+      evaled <- eval st x fs
+      rest <- evalArgs (fst evaled) xs fs
+      return $ ((fst rest), ((snd evaled):(snd rest)))
+    fillVars st [] [] = do return st
+    fillVars st _ [] = error "Bad argument count"
+    fillVars st [] _ = error "Bad argument count"
+    fillVars st (val:vals) ((name, _):xs) = do
+      fillVars (setSt st name val) vals xs
 
-evaluateBool :: SymbolTable -> Expr -> [Command] -> IO Bool
+evaluateBool :: SymbolTable -> Expr -> [Command] -> IO (SymbolTable, Bool)
 evaluateBool st expr fs = do
              res <- (eval st expr fs)
-             if  res /= IntegerValue 0 then return True
-             else return False
+             if (snd res) /= IntegerValue 0 then return (fst res, True)
+             else return (fst res, False)
 
 scan :: SymbolTable -> String -> IO SymbolTable
 scan st name = do
@@ -419,70 +437,60 @@ scan st name = do
 --    tabulka symbolu - aktualni prikaz - tabulka funkci - vystup
 interpret :: SymbolTable -> Command -> [Command] -> IO SymbolTable
 interpret st (DefineVar name value) _ = do
-          putStrLn "define var"
           return $ insertStLocal st name value
 interpret st (Assign name e) fs = do
-          putStrLn "assing var"
           res <- eval st e fs
-          return $ setSt st name res
+          return $ setSt (fst res) name (snd res)
 interpret st (Print e) fs = do
-          putStrLn "print var"
           res <- eval st e fs
-          showVal res
-          return st
+          showVal (snd res)
+          return (fst res)
           where
             showVal (IntegerValue i) = do putStrLn $ show i
             showVal (DoubleValue d) = do putStrLn $ show d
             showVal (StringValue s) = do putStrLn s
             showVal _ = error "Trying to print undefined variable"
 interpret st (Scan name) _ = do
-          putStrLn "scan var"
           newst <- scan st name
           return newst
 interpret st (Seq []) _ = do
-          putStrLn "last seq"
           return st
 interpret st (Seq (first:others)) fs = do
-          putStrLn "seq"
           turboEncabulator first others fs
           where
             turboEncabulator (Return e) _ fs = do
                res <- eval st e fs
-               return $ insertStRetVal st res
+               return $ insertStRetVal (fst res) (snd res)
             turboEncabulator command others fs = do
                newst <- interpret st first fs
                interpret newst (Seq others) fs
 interpret st (If e seq1 seq2) fs = do
           res <- evaluateBool st e fs
-          if res then do
-                      putStrLn "if first"
-                      interpret st seq1 fs
+          if (snd res) then do
+                      interpret (fst res) seq1 fs
           else do
-               putStrLn "if second"
-               interpret st seq2 fs
+               interpret (fst res) seq2 fs
 interpret st loop@(While e seq) fs = do
           res <- evaluateBool st e fs
-          if res then do
-                      putStrLn "while loop"
-                      newst <- interpret st seq fs
+          if (snd res) then do
+                      newst <- interpret (fst res) seq fs
                       interpret newst loop fs
           else do
-               putStrLn "while end"
-               return st
+               return $ fst res
 interpret st (MainF seq) fs = do
-          putStrLn "main"
           newst <- prepareStForCall st []
           interpret newst seq fs
 interpret st (Function _ params seq) fs = do
-          putStrLn "func call"
           -- newst <- prepareStForCall st params -- TODO: toto ma byt v call, kvuli nastavenejm promenejm
           interpret st seq fs
---interpret st (Eval e) functions = do
---          eval st e
---          return st
+interpret st (Eval e) fs = do
+          evaled <- eval st e fs
+          return (fst evaled)
 interpret st _ _ = do
           putStrLn "other"
           return st
+
+createSt = ([],[[]])
 
 main = do
      args <- getArgs
@@ -491,12 +499,17 @@ main = do
      else do
           let fileName = args!!0
           input <- readFile fileName
-          let asts = parseAep input fileName
+          let (globs, asts) = parseAep input fileName
           putStrLn $ show asts
-          interpret ([],[[]]) (getMain asts) asts -- prvni je tabulka symbolu, druhe tabulka funkci?
+          putStrLn $ show globs
+          preparedSt <- prepareSt createSt globs 
+          interpret preparedSt (getMain asts) asts -- prvni je tabulka symbolu, druhe tabulka funkci?
      where
        getMain :: [Command] -> Command
        getMain [] = error "Main function missing"
        getMain ((Function _ _ _) : asts) = getMain asts
        getMain (m@(MainF _) : _) = m
        getMain (_:asts) = getMain asts
+       prepareSt st globs = do
+           (g,l:_) <- interpret createSt (Seq globs) []
+           return $ (l,[[]]) 
