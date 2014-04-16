@@ -270,7 +270,7 @@ checker f fs = if (check' f fs) then (fs++[f]) -- HOHOHO!
                 checkExpr (LesserOrEqual e1 e2) fs = (checkExpr e1 fs) && (checkExpr e2 fs)
                 checkExpr (Call name exprs) fs = (all (\x -> checkExpr x fs) exprs) && (getFunctionForCall fs name)
                 checkExpr _ _ = True
-                getFunctionForCall [] _ = False
+                getFunctionForCall [] name = error $ "Calling undefined function " ++ name
                 getFunctionForCall ((Declare name1 _):fs) name2 =
                   if name1 == name2 then True
                   else getFunctionForCall fs name2
