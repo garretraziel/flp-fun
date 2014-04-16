@@ -4,6 +4,7 @@ import System.Environment ( getArgs )
 import System.IO
 
 import Text.ParserCombinators.Parsec
+import qualified Text.Parsec.Prim as Pr
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Expr
 import Text.ParserCombinators.Parsec.Language
@@ -237,11 +238,46 @@ aep = do
     globals <- many $ try varDeclarationLine
     if not (checkVars globals) then error "Multiple definition of same global variable"
     else do
-    asts <- many $ funcAST globals
+    asts <- Pr.manyAccum checker $ funcAST globals
     -- main <- mainAST
     eof
     return (globals, asts)
     <?> "aep"
+
+checker f fs = if (check' f fs) then (fs++[f]) -- HOHOHO!
+                                else error $ "Calling undefined function"
+              where
+                -- Function String [ Command ] Command
+                check' (Function _ _ cmds) fs = check' cmds fs
+                check' (Assign _ e) fs = checkExpr e fs
+                check' (Print e) fs = checkExpr e fs
+                check' (Seq cmds) fs = all (\x -> check' x fs) cmds
+                check' (If e cmds1 cmds2) fs = (checkExpr e fs) && (check' cmds1 fs) && (check' cmds2 fs)
+                check' (While e cmds) fs = (checkExpr e fs) && (check' cmds fs)
+                check' (Return e) fs = checkExpr e fs
+                check' (MainF cmds) fs = check' cmds fs
+                check' (Eval e) fs = checkExpr e fs
+                check' _ _ = True
+                checkExpr (Add e1 e2) fs = (checkExpr e1 fs) && (checkExpr e2 fs)
+                checkExpr (Sub e1 e2) fs = (checkExpr e1 fs) && (checkExpr e2 fs)
+                checkExpr (Mult e1 e2) fs = (checkExpr e1 fs) && (checkExpr e2 fs)
+                checkExpr (Div e1 e2) fs = (checkExpr e1 fs) && (checkExpr e2 fs)
+                checkExpr (Equal e1 e2) fs = (checkExpr e1 fs) && (checkExpr e2 fs)
+                checkExpr (NotEqual e1 e2) fs = (checkExpr e1 fs) && (checkExpr e2 fs)
+                checkExpr (Greater e1 e2) fs = (checkExpr e1 fs) && (checkExpr e2 fs)
+                checkExpr (Lesser e1 e2) fs = (checkExpr e1 fs) && (checkExpr e2 fs)
+                checkExpr (GreaterOrEqual e1 e2) fs = (checkExpr e1 fs) && (checkExpr e2 fs)
+                checkExpr (LesserOrEqual e1 e2) fs = (checkExpr e1 fs) && (checkExpr e2 fs)
+                checkExpr (Call name exprs) fs = (all (\x -> checkExpr x fs) exprs) && (getFunctionForCall fs name)
+                checkExpr _ _ = True
+                getFunctionForCall [] _ = False
+                getFunctionForCall ((Declare name1 _):fs) name2 =
+                  if name1 == name2 then True
+                  else getFunctionForCall fs name2
+                getFunctionForCall ((Function name1 _ _):fs) name2 =
+                  if name1 == name2 then True
+                  else getFunctionForCall fs name2
+                getFunctionForCall (_:fs) name = getFunctionForCall fs name
 
 getFunction :: [Command] -> String -> Command
 getFunction [] _ = error "Cannot find called function"
