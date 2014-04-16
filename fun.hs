@@ -214,22 +214,22 @@ funcDeclaration = do
   return $ Declare i vars
   <?> "function definition"
 
-funcDefinition = do
+funcDefinition globals = do
   reserved "int"
   i <- identifier
   vars <- parens $ sepBy varDeclarationType comma
-  seq <- braces $ funcBody vars
+  seq <- braces $ funcBody (vars++globals)
   if i /= "main"
   then return $ Function i vars seq
   else if (length vars) /= 0 then error "Main function cannot have arguments"
        else return $ MainF seq
   <?> "function declaration"
 
-funcAST = do
+funcAST globals = do
   -- jestli chapu dobre, try je dobrej k look ahead
   try funcDeclaration
   <|>
-  funcDefinition
+  funcDefinition globals
   <?> "function"
 
 aep = do
@@ -237,7 +237,7 @@ aep = do
     globals <- many $ try varDeclarationLine
     if not (checkVars globals) then error "Multiple definition of same global variable"
     else do
-    asts <- many funcAST
+    asts <- many $ funcAST globals
     -- main <- mainAST
     eof
     return (globals, asts)
