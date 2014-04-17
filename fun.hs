@@ -330,29 +330,36 @@ getSt (((name, value):xs), rest, r) variable =
   if variable == name then value
   else getSt (xs, rest, r) variable
 
-setVariableInList :: VariableTable -> String -> MultiValue -> Maybe VariableTable
-setVariableInList [] variable _ = Nothing
-setVariableInList (first@(name, _):xs) variable value =
-                  if name == variable then Just ((name, value):xs)
-                  else case setVariableInList xs variable value of
+setVariableInList :: VariableTable -> String -> MultiValue -> Bool -> Maybe VariableTable
+setVariableInList [] variable _ _ = Nothing
+setVariableInList (first@(name, val):xs) variable value canChangeType =
+                  if name == variable then changeValue name val value canChangeType
+                  else case setVariableInList xs variable value canChangeType of
                             Nothing -> Nothing
                             Just a -> Just (first:a)
+                  where
+                    changeValue :: String -> MultiValue -> MultiValue -> Bool -> Maybe VariableTable
+                    changeValue name (IntegerValue _) v@(IntegerValue _) _ = Just ((name, v):xs)
+                    changeValue name (UndefInt) v@(IntegerValue _) _ = Just ((name, v):xs)
+                    changeValue name (DoubleValue _) v@(DoubleValue _) _ = Just ((name, v):xs)
+                    changeValue name (UndefDouble) v@(DoubleValue _) _ = Just ((name, v):xs)
+                    changeValue name (StringValue _) v@(StringValue _) _ = Just ((name, v):xs)
+                    changeValue name (UndefStr) v@(StringValue _) _ = Just ((name, v):xs)
+                    changeValue name (UndefDouble) (IntegerValue a) True = Just ((name, (DoubleValue $ fromIntegral a)):xs)
+                    changeValue name (DoubleValue _) (IntegerValue a) True = Just ((name, (DoubleValue $ fromIntegral a)):xs)
+                    changeValue _ _ _ _ = error $ "Cannot assing to variable " ++ name ++ ": Bad type"
 
--- TODO: kontrolovat datovy typy
--- "tvrda" varianta, ktera promennou nevytvari, jen nastavuje
-setSt :: SymbolTable -> String -> MultiValue -> SymbolTable
-setSt (global, local@(head:rest), r) variable value =
-      case setVariableInList head variable value of
-           Nothing -> case setVariableInList global variable value of
+setSt :: SymbolTable -> String -> MultiValue -> Bool -> SymbolTable
+setSt (global, local@(head:rest), r) variable value canChangeType=
+      case setVariableInList head variable value canChangeType of
+           Nothing -> case setVariableInList global variable value canChangeType of
                            Nothing -> error $ "Variable \"" ++ variable ++ "\" not in scope"
                            Just result -> (result, local, r)
            Just result -> (global, (result:rest), r)
 
--- TODO: mozna nejaka kontrola neexistence?
 insertStLocal :: SymbolTable -> String -> MultiValue -> SymbolTable
 insertStLocal (global, (head:rest), r) name value = (global, ((name, value):head):rest, r)
 
--- TODO: taky prebirat funkci a rovnou vytvorit a naplnit argumenty
 prepareStForCall :: SymbolTable -> [Command] -> IO SymbolTable
 prepareStForCall (global, local, r) defs = do
   interpret (global, ([]:local), r) (Seq defs) []
@@ -480,7 +487,7 @@ eval st (Call name vars) fs = do
     fillVars st _ [] = error "Bad argument count"
     fillVars st [] _ = error "Bad argument count"
     fillVars st (val:vals) ((name, _):xs) = do
-      fillVars (setSt st name val) vals xs
+      fillVars (setSt st name val True) vals xs
 
 evaluateBool :: SymbolTable -> Expr -> [Command] -> IO (SymbolTable, Bool)
 evaluateBool st expr fs = do
@@ -491,7 +498,7 @@ evaluateBool st expr fs = do
 scan :: SymbolTable -> String -> IO SymbolTable
 scan st name = do
   nval <- scan' $ getSt st name
-  return $ setSt st name nval
+  return $ setSt st name nval False
   where
     scan' :: MultiValue -> IO MultiValue
     scan' (IntegerValue _) = do
@@ -569,7 +576,7 @@ interpret st (DefineVar name value) _ = do
           return $ insertStLocal st name value
 interpret st (Assign name e) fs = do
           res <- eval st e fs
-          return $ setSt (fst res) name (snd res)
+          return $ setSt (fst res) name (snd res) False
 interpret st (Print e) fs = do
           res <- eval st e fs
           showVal (snd res)

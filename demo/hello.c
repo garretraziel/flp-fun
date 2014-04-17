@@ -1,6 +1,6 @@
-int test(int a, string d, int x);
+int test(int a);
 
-int test(int a, string c, double x){
+int test(int a){
 	int b;
 	b = 10;
 	return a*b;
