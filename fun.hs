@@ -16,7 +16,7 @@ aelDef = emptyDef
        , nestedComments = False
        , identStart = letter <|> char '_'
        , identLetter = alphaNum <|> char '_'
-       , opStart = oneOf "=+-*/"
+       , opStart = oneOf "=+-*/<>!"
        , opLetter = opStart aelDef
        , reservedOpNames = ["=", "+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!="]
        , reservedNames = ["double", "else", "if", "int", "print", "scan", "string", "while", "return"]
