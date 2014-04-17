@@ -366,21 +366,31 @@ returnStFromFunction (globals, _:locals, r) = ((globals, locals, UndefInt), r)
 add :: MultiValue -> MultiValue -> MultiValue
 add (IntegerValue a) (IntegerValue b) = IntegerValue (a + b)
 add (DoubleValue a) (DoubleValue b) = DoubleValue (a + b)
+add (IntegerValue a) (DoubleValue b) = DoubleValue ((fromIntegral a) + b)
+add (DoubleValue a) (IntegerValue b) = DoubleValue (a + (fromIntegral b))
 add (StringValue a) (StringValue b) = StringValue (a ++ b)
+add _ _ = error "Cannot add two values of uncompatible types"
 
 sub :: MultiValue -> MultiValue -> MultiValue
 sub (IntegerValue a) (IntegerValue b) = IntegerValue (a - b)
 sub (DoubleValue a) (DoubleValue b) = DoubleValue (a - b)
--- TODO: i pro integer s doublem?
+sub (IntegerValue a) (DoubleValue b) = DoubleValue ((fromIntegral a) - b)
+sub (DoubleValue a) (IntegerValue b) = DoubleValue (a - (fromIntegral b))
+sub _ _ = error "Cannot substract two values of uncompatible types"
 
 mult :: MultiValue -> MultiValue -> MultiValue
 mult (IntegerValue a) (IntegerValue b) = IntegerValue (a * b)
 mult (DoubleValue a) (DoubleValue b) = DoubleValue (a * b)
--- TODO: i pro integer s doublem?
+mult (IntegerValue a) (DoubleValue b) = DoubleValue ((fromIntegral a) * b)
+mult (DoubleValue a) (IntegerValue b) = DoubleValue (a * (fromIntegral b))
+mult _ _ = error "Cannot multiply two values of uncompatible types"
 
 divide :: MultiValue -> MultiValue -> MultiValue
-divide (IntegerValue a) (IntegerValue b) = IntegerValue (quot a  b) -- TODO: nemusi se tady prevadet z double na integer?
+divide (IntegerValue a) (IntegerValue b) = IntegerValue (quot a  b)
 divide (DoubleValue a) (DoubleValue b) = DoubleValue (a / b)
+divide (IntegerValue a) (DoubleValue b) = DoubleValue ((fromIntegral a) / b)
+divide (DoubleValue a) (IntegerValue b) = DoubleValue (a / (fromIntegral b))
+divide _ _ = error "Cannot divide two values of uncompatible types"
 
 -- TODO: oduvodnit do dokumentace !!!
 comp :: Ordering -> MultiValue -> MultiValue -> MultiValue
@@ -454,7 +464,6 @@ eval st (GreaterOrEqual e1 e2) fs = do
   op2 <- (eval (fst op1) e2 fs)
   return $ (fst op2, ((snd op1) `greater` (snd op2)) `orMultiVal` ((snd op1) `equal` (snd op2)))
 eval st (Call name vars) fs = do
---  return $ (st, IntegerValue 0)
   evaledArgs <- evalArgs st vars fs
   emptyFrameSt <- prepareStForCall (fst evaledArgs) (getFuncArgs fs name)
   let local_stack = (snd' emptyFrameSt)!!0
