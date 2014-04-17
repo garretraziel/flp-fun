@@ -53,10 +53,10 @@ data Command = DefineVar String MultiValue
      | If Expr Command Command
      | While Expr Command  -- ditto
      | Return Expr
-     | Function String [ Command ] Command
+     | Function String MultiValue [ Command ] Command
      | MainF Command
      | Eval Expr
-     | Declare String [ Command ]
+     | Declare String MultiValue [ Command ]
      deriving Show
 
 data Expr = ConstInt Integer
@@ -183,12 +183,27 @@ cmd vars = do
         semi
         return $ Assign i e
 
+isInt :: MultiValue -> Bool
+isInt UndefInt = True
+isInt (IntegerValue _) = True
+isInt _ = False
+
+isDouble :: MultiValue -> Bool
+isDouble UndefDouble = True
+isDouble (DoubleValue _) = True
+isDouble _ = False
+
+isStr :: MultiValue -> Bool
+isStr UndefStr = True
+isStr (StringValue _) = True
+isStr _ = False
+
 -- toto jeste zmenit
-funcBody args = do
+funcBody args globals = do
     vars <- many $ varDeclarationLine
     if not (checkVars (vars++args)) then error "Duplicate definition of variables"
     else do
-         seq <- many $ cmd (vars ++ args)
+         seq <- many $ cmd (vars ++ args ++ globals)
          return $ Seq (vars++seq) -- TODO: toto mozna bude stacit takto?
 
 checkVars :: [Command] -> Bool
@@ -208,20 +223,31 @@ isMember name1 ((DefineVar name2 _):xs) =
 
 -- zatim jen int funkce, poresit nadtyp typu (podobne jak je v pasi.hs to PTypes)
 funcDeclaration = do
-  reserved "int"
+  retType <- typeParser
   i <- identifier
   vars <- parens $ sepBy varDeclarationType comma
   semi  -- nebo _ <- semi ?? kdo vi
-  return $ Declare i vars
+  return $ Declare i retType vars
   <?> "function definition"
 
-funcDefinition globals = do
+typeParser = do
   reserved "int"
+  return UndefInt
+  <|> do
+  reserved "double"
+  return UndefDouble
+  <|> do
+  reserved "string"
+  return UndefStr
+  <?> "type parsing"
+
+funcDefinition globals = do
+  retType <- typeParser
   i <- identifier
   vars <- parens $ sepBy varDeclarationType comma
-  seq <- braces $ funcBody (vars++globals)
+  seq <- braces $ funcBody vars globals
   if i /= "main"
-  then return $ Function i vars seq
+  then return $ Function i retType vars seq
   else if (length vars) /= 0 then error "Main function cannot have arguments"
        else return $ MainF seq
   <?> "function declaration"
@@ -248,7 +274,7 @@ checker f fs = if (check' f fs) then (fs++[f]) -- HOHOHO!
                                 else error $ "Calling undefined function"
               where
                 -- Function String [ Command ] Command
-                check' (Function _ _ cmds) fs = check' cmds fs
+                check' (Function _ _ _ cmds) fs = check' cmds fs
                 check' (Assign _ e) fs = checkExpr e fs
                 check' (Print e) fs = checkExpr e fs
                 check' (Seq cmds) fs = all (\x -> check' x fs) cmds
@@ -271,24 +297,24 @@ checker f fs = if (check' f fs) then (fs++[f]) -- HOHOHO!
                 checkExpr (Call name exprs) fs = (all (\x -> checkExpr x fs) exprs) && (getFunctionForCall fs name)
                 checkExpr _ _ = True
                 getFunctionForCall [] name = error $ "Calling undefined function " ++ name
-                getFunctionForCall ((Declare name1 _):fs) name2 =
+                getFunctionForCall ((Declare name1 _ _):fs) name2 =
                   if name1 == name2 then True
                   else getFunctionForCall fs name2
-                getFunctionForCall ((Function name1 _ _):fs) name2 =
+                getFunctionForCall ((Function name1 _ _ _):fs) name2 =
                   if name1 == name2 then True
                   else getFunctionForCall fs name2
                 getFunctionForCall (_:fs) name = getFunctionForCall fs name
 
 getFunction :: [Command] -> String -> Command
 getFunction [] _ = error "Cannot find called function"
-getFunction (f@(Function name1 _ _) : asts) name2 =
+getFunction (f@(Function name1 _ _ _) : asts) name2 =
         if name1 == name2 then f
         else getFunction asts name2
 getFunction (_:asts) name2 = getFunction asts name2
 
 getFuncArgs :: [Command] -> String -> [Command]
 getFuncArgs [] _ = error "Cannot find called function"
-getFuncArgs ((Function name1 args _) : asts) name2 =
+getFuncArgs ((Function name1 _ args _) : asts) name2 =
         if name1 == name2 then args
         else getFuncArgs asts name2
 getFuncArgs (_:asts) name2 = getFuncArgs asts name2
@@ -483,9 +509,6 @@ scan st name = do
 -- 4. jestli je kazda globalni promenna deklarovana prave jednou
 --
 -- na urovni funkci pak:
--- 5. jestli pouzita promenna existuje
--- 6. jestli jestli je kazda promenna deklarovana prave jednou
--- 7. jestli byla deklarovana/definovana volana funkce
 -- 8. jestli soulasi pocet a typ argumentu volani funkce
 -- 9. typova kontrola operaci
 -- 10. typova kontrola assignu
@@ -543,7 +566,7 @@ interpret st loop@(While e seq) fs = do
                return $ fst res
 interpret st (MainF seq) fs = do
           interpret st seq fs
-interpret st (Function _ params seq) fs = do
+interpret st (Function _ _ params seq) fs = do
           interpret st seq fs
 interpret st (Eval e) fs = do
           evaled <- eval st e fs
@@ -570,7 +593,7 @@ main = do
      where
        getMain :: [Command] -> Command
        getMain [] = error "Main function missing"
-       getMain ((Function _ _ _) : asts) = getMain asts
+       getMain ((Function _ _ _ _) : asts) = getMain asts
        getMain (m@(MainF _) : _) = m
        getMain (_:asts) = getMain asts
        prepareSt st globs = do
