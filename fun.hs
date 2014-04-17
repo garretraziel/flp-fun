@@ -504,8 +504,6 @@ scan st name = do
       s <- getLine
       return $ StringValue s
 
-
-
 funcCheck :: [Command] -> Bool
 funcCheck fs = funcCheck' $ filter isFunc fs
   where
@@ -628,7 +626,7 @@ main = do
             then do
                 preparedSt <- prepareSt createSt globs 
                 interpret preparedSt (getMain asts) asts
-            else error "Terminatng." -- todo
+            else error "Error during compilation" -- todo
      where
        getMain :: [Command] -> Command
        getMain [] = error "Main function missing"
