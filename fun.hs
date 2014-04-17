@@ -97,12 +97,11 @@ expr vars = buildExpressionParser operators (term vars) where
   op name fun =
     Infix ( do { reservedOp name; return fun } ) AssocLeft
 
-term vars = do
+term vars =
+    try parseDouble
+  <|> do
     i <- integer
     return $ ConstInt $ fromInteger i
-  <|> do
-    d <- double
-    return $ ConstDouble d
   <|> do
     s <- stringLiteral
     return $ ConstString s
@@ -120,6 +119,9 @@ term vars = do
       f <- identifier
       exprs <- parens $ sepBy (expr vars) comma
       return $ Call f exprs
+    parseDouble = do
+      d <- double
+      return $ ConstDouble d
 
 varDeclarationType = do
     reserved "int"
