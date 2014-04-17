@@ -502,12 +502,46 @@ scan st name = do
       s <- getLine
       return $ StringValue s
 
--- otestovat:
--- 1. jestli je funkce deklarovana maximalne jednou (a pred definici?)
--- 2. jestli je funkce definovana prave jednou
--- 3. jestli v deklaraci a definici souhlasi pocet a typ argumentu a navratova hodnota
--- 4. jestli je kazda globalni promenna deklarovana prave jednou
---
+
+
+funcCheck :: [Command] -> Bool
+funcCheck fs = funcCheck' $ filter isFunc fs
+  where
+    isFunc (Function _ _ _ _) = True
+    isFunc (Declare _ _ _) = True
+    isFunc _ = False
+    funcCheck' fs = (onlyOne fs) && (argsOk fs)
+    onlyOne [] = True
+    onlyOne ((Function name _ _ _):fs) = searchDef name fs && onlyOne fs
+    onlyOne ((Declare name _ _):fs) = searchDecl name fs && onlyOne fs
+    searchDef name [] = True
+    searchDef name1 ((Function name2 _ _ _):fs) = if name1 /= name2 
+                                                  then searchDef name1 fs
+                                                  else error ("Function " ++ name1 ++ " redefined")
+    searchDef name (_:fs) = searchDef name fs
+    searchDecl name [] = True
+    searchDecl name1 ((Declare name2 _ _):fs) = if name1 /= name2 
+                                                  then searchDecl name1 fs
+                                                  else error ("Function " ++ name1 ++ " declared more than once")
+    searchDecl name (_:fs) = searchDecl name fs
+    argsOk [] = True
+    argsOk (f:fs) = (checkArgs f fs) && argsOk fs
+    checkArgs _ [] = True
+    checkArgs f@(Function name1 _ args1 _) ((Declare name2 _ args2):fs) = if name1 /= name2
+                                                                          then checkArgs f fs
+                                                                          else checkArgs' name1 args1 args2
+    checkArgs f@(Declare name1 _ args1) ((Function name2 _ args2 _):fs) = if name1 /= name2
+                                                                          then checkArgs f fs
+                                                                          else checkArgs' name1 args1 args2
+    checkArgs' _ [] [] = True
+    checkArgs' name [] _ = error ("Mismatched number of args in definition and declaration of function " ++ name)
+    checkArgs' name _ [] = error ("Mismatched number of args in definition and declaration of function " ++ name)
+    checkArgs' name ((DefineVar _ UndefInt):as1) ((DefineVar _ UndefInt):as2) = checkArgs' name as1 as2
+    checkArgs' name ((DefineVar _ UndefStr):as1) ((DefineVar _ UndefStr):as2) = checkArgs' name as1 as2
+    checkArgs' name ((DefineVar _ UndefDouble):as1) ((DefineVar _ UndefDouble):as2) = checkArgs' name as1 as2
+    checkArgs' name (_:as1) (_:as2) = error ("Mismatched args in definition and deklaration of function " ++ name)
+
+
 -- na urovni funkci pak:
 -- 8. jestli soulasi pocet a typ argumentu volani funkce
 -- 9. typova kontrola operaci
@@ -588,8 +622,11 @@ main = do
           let fileName = args!!0
           input <- readFile fileName
           let (globs, asts) = parseAep input fileName
-          preparedSt <- prepareSt createSt globs 
-          interpret preparedSt (getMain asts) asts
+          if funcCheck asts
+            then do
+                preparedSt <- prepareSt createSt globs 
+                interpret preparedSt (getMain asts) asts
+            else error "Terminatng." -- todo
      where
        getMain :: [Command] -> Command
        getMain [] = error "Main function missing"
