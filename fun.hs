@@ -200,6 +200,13 @@ isStr UndefStr = True
 isStr (StringValue _) = True
 isStr _ = False
 
+sameType :: MultiValue -> MultiValue -> Bool
+sameType a b
+  | (isInt a) && (isInt b) = True
+  | (isDouble a) && (isDouble b) = True
+  | (isStr a) && (isStr b) = True
+  | otherwise = False
+
 -- toto jeste zmenit
 funcBody args globals = do
     vars <- many $ varDeclarationLine
@@ -321,6 +328,13 @@ getFuncArgs ((Function name1 _ args _) : asts) name2 =
         else getFuncArgs asts name2
 getFuncArgs (_:asts) name2 = getFuncArgs asts name2
 
+getFuncType :: [Command] -> String -> MultiValue
+getFuncType [] _ = error "Cannot find called function"
+getFuncType ((Function name1 fType _ _) : asts) name2 =
+        if name1 == name2 then fType
+        else getFuncType asts name2
+getFuncType (_:asts) name2 = getFuncType asts name2
+
 getSt :: SymbolTable -> String -> MultiValue
 getSt ([], ([]:_), _) variable = error $ "Variable \"" ++ variable ++ "\" not in scope"
 getSt (global, (((name, value):xs):rest), r) variable =
@@ -367,8 +381,8 @@ prepareStForCall (global, local, r) defs = do
 insertStRetVal :: SymbolTable -> MultiValue -> SymbolTable
 insertStRetVal (globals,locals,_) val = (globals,locals,val)
 
-returnStFromFunction :: SymbolTable -> StAndValue
-returnStFromFunction (globals, _:locals, r) = ((globals, locals, UndefInt), r)
+returnStFromFunction :: SymbolTable -> IO StAndValue
+returnStFromFunction (globals, _:locals, r) = do return ((globals, locals, UndefInt), r)
 
 add :: MultiValue -> MultiValue -> MultiValue
 add (IntegerValue a) (IntegerValue b) = IntegerValue (a + b)
@@ -476,7 +490,9 @@ eval st (Call name vars) fs = do
   let local_stack = (snd' emptyFrameSt)!!0
   framest <- fillVars emptyFrameSt (snd evaledArgs) local_stack
   newst <- interpret framest (getFunction fs name) fs
-  return $ returnStFromFunction newst
+  r <- returnStFromFunction newst
+  if not (sameType (getFuncType fs name) (snd r)) then error $ "Bad return type of function "++name
+  else do return $ r
   where
     evalArgs st [] fs = return $ (st, [])
     evalArgs st (x:xs) fs = do
