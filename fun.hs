@@ -573,20 +573,6 @@ funcCheck fs = funcCheck' $ filter isFunc fs
     checkArgs' name ((DefineVar _ UndefDouble):as1) ((DefineVar _ UndefDouble):as2) = checkArgs' name as1 as2
     checkArgs' name (_:as1) (_:as2) = error ("Mismatched args in definition and deklaration of function " ++ name)
 
-
--- na urovni funkci pak:
--- 8. jestli soulasi pocet a typ argumentu volani funkce
--- 9. typova kontrola operaci
--- 10. typova kontrola assignu
--- 11. typova kontrola navratu funkce
--- 12. nejak resit pretypovani u volani integer -> double
---realityCheck :: [Command] -> Bool
---realityCheck [] = True
---realityCheck (head:tail) = (checkCollision head tail) && realityCheck tail
---                           where
---                             checkCollision 
-
---    tabulka symbolu - aktualni prikaz - tabulka funkci - vystup
 interpret :: SymbolTable -> Command -> [Command] -> IO SymbolTable
 interpret st (DefineVar name value) _ = do
           return $ insertStLocal st name value
