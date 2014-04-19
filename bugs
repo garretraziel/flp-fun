@@ -1,0 +1,44 @@
+BUGS:
+1. funkcia definovaná bez deklarácie nefunguje v programe BUG_no_declaration [možno kvôli rekurzii?]
+2. tesný zápis priradenia nezožere e.g.:
+
+    volanie:
+        result=factorial(a);
+               ^ tu medzera
+    výstup:
+        xmokra00: "demo/fact.c" (line 19, column 19):
+        unexpected "="
+        expecting letter or digit, "_", operator or ";"
+        
+   => vyžaduje medzeru za znakom "=", pred ním nie
+3. porovnávanie: za porovnávacím znakom nesmie bezprostredne následovať "-"
+    => 3>3   OK
+    => 3> -3 OK
+    => 3>-3  FAIL
+4. v momente ak definujem viac ako jednu funkciu v functions_test tak
+    "xmokra00: fun.hs:(561,5)-(567,107): Non-exhaustive patterns in function checkArgs"
+5. funkcia typu int bez returnu prejde
+
+TESTED:
+1. medzery vo výrazoch
+2. zlý počet premenných pri volaní funkcie
+3. operácie nad premennými rôznych typov (string, int, double)
+4. priorita operácií
+5. scan, print, výrazy ako parametre
+6. string a práce s premennými
+7. if_then_else
+8. porovnania
+9. return vo funkciách, dekl/def fn
+10. 
+
+
+
+
+========================================================    
+OTHER:
+1. if.. else... musí "else" byť vždy definované (aspoň tak som to pochopil aj podľa zadania). Tak to aj v projekte funguje
+2. v deklarácii premennej sa nedá priradiť hodnota
+3. !!!!!!!!!NOT SURE IF BUG OR OK:
+myslím že pri print(string) by sa nemal dávať koniec riadku,aaspoň tak nejak mi to vychádza zo zadania....pri pohľade na testovacie kódy...
+4. double spracovanie je nejak záhadné... ak to správne chápem tak to nežere záporné čísla?
+    => priradenie double a; a = 5; [assign int prakticky] prejde, ak za tým nie je žiadny kód, inak hádže chybu.
