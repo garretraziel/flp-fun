@@ -28,7 +28,7 @@ TESTED:
 6. string a práce s premennými
 7. if_then_else
 8. porovnania
-9. return vo funkciách, dekl/def fn
+9. return vo funkciách, dekl/def fn,  rekurzia
 10. 
 
 
@@ -39,6 +39,6 @@ OTHER:
 1. if.. else... musí "else" byť vždy definované (aspoň tak som to pochopil aj podľa zadania). Tak to aj v projekte funguje
 2. v deklarácii premennej sa nedá priradiť hodnota
 3. !!!!!!!!!NOT SURE IF BUG OR OK:
-myslím že pri print(string) by sa nemal dávať koniec riadku,aaspoň tak nejak mi to vychádza zo zadania....pri pohľade na testovacie kódy...
+myslím že pri print(string) by sa nemal dávať koniec riadku,aaspoň tak nejak mi to vychádza zo zadania....pri pohľade na testovacie kódy... aj keď v texte hovorí že hej... môžeme sa oháňať zadaním...
 4. double spracovanie je nejak záhadné... ak to správne chápem tak to nežere záporné čísla?
     => priradenie double a; a = 5; [assign int prakticky] prejde, ak za tým nie je žiadny kód, inak hádže chybu.
