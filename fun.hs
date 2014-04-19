@@ -180,7 +180,7 @@ cmd vars = do
     where
       identifierParser = do
         i <- identifier
-        reserved "="
+        reservedOp "="
         e <- expr vars
         semi
         return $ Assign i e
