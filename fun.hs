@@ -514,7 +514,7 @@ evaluateBool st expr fs = do
 scan :: SymbolTable -> String -> IO SymbolTable
 scan st name = do
   nval <- scan' $ getSt st name
-  return $ setSt st name nval False
+  return $ setSt st name nval True
   where
     scan' :: MultiValue -> IO MultiValue
     scan' (IntegerValue _) = do
@@ -579,7 +579,7 @@ interpret st (DefineVar name value) _ = do
           return $ insertStLocal st name value
 interpret st (Assign name e) fs = do
           res <- eval st e fs
-          return $ setSt (fst res) name (snd res) False
+          return $ setSt (fst res) name (snd res) True
 interpret st (Print e) fs = do
           res <- eval st e fs
           showVal (snd res)
