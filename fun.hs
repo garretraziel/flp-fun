@@ -279,8 +279,8 @@ aep = do
     return (globals, asts)
     <?> "aep"
 
-checker f fs = if (check' f fs) then (fs++[f]) -- HOHOHO!
-                                else error $ "Calling undefined function"
+checker f fs = if (check' f (fs++[f])) then (fs++[f]) -- HOHOHO!
+               else error $ "Calling undefined function"
               where
                 -- Function String [ Command ] Command
                 check' (Function _ _ _ cmds) fs = check' cmds fs
