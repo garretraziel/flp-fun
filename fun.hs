@@ -565,6 +565,7 @@ funcCheck fs = funcCheck' $ filter isFunc fs
     checkArgs f@(Declare name1 _ args1) ((Function name2 _ args2 _):fs) = if name1 /= name2
                                                                           then checkArgs f fs
                                                                           else checkArgs' name1 args1 args2
+    checkArgs f (_:fs) = checkArgs f fs
     checkArgs' _ [] [] = True
     checkArgs' name [] _ = error ("Mismatched number of args in definition and declaration of function " ++ name)
     checkArgs' name _ [] = error ("Mismatched number of args in definition and declaration of function " ++ name)
