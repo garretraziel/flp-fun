@@ -1,4 +1,10 @@
+-- FLP-2014-C
 -- interpreter C-like jazyka
+--
+-- Matej Curilla xcuril00
+-- Lukas Brabec xbrabe09
+-- Radka Mokra xmokra00
+-- Jan Sedlak xsedla85
 
 module Main ( main ) where
 

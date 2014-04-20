@@ -1,0 +1,12 @@
+FLP-2014-C
+----------
+interpreter C-like jazyka v jazyce Haskell
+
+Spusteni:
+./xmokra00 zdrojovy_kod.c
+
+Implementacni detaily:
+- vysledek porovnani (<, >, == apod.) je typu int
+  -> lze nad nim provadet dalsi aritmenticke operace
+- je povolene vytvaret lokalni promenne se stejnym nazvem jako globalni
+  -> lokalni promenna pro danou funkci "prekryje" globalni

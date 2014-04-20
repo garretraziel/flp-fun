@@ -1,2 +1,2 @@
-default: fun.hs
+default:
 	ghc fun.hs -o xmokra00
