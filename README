@@ -2,6 +2,12 @@ FLP-2014-C
 ----------
 interpreter C-like jazyka v jazyce Haskell
 
+Zdrojovy kod je obsazen v souboru fun.hs, vysledny
+spustitelny soubor se jmenuje xmokra00.
+
+Ukazkovy priklad programu pro interpretaci je v souboru
+example.c.
+
 Spusteni:
 ./xmokra00 zdrojovy_kod.c
 

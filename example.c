@@ -1,5 +1,7 @@
+// globalni promenne
 double PI;
 
+/***** sekce deklarace funkci *****/
 int factorial(int n);
 
 string uvitani(string a, int b) {
@@ -35,4 +37,5 @@ int main()
 	} else {
 		uvitani(a, b);
 	}
+	return 0;
 }
