@@ -51,7 +51,7 @@ data Command = DefineVar String MultiValue
      | Scan String
      | Seq [ Command ]
      | If Expr Command Command
-     | While Expr Command  -- ditto
+     | While Expr Command
      | Return Expr
      | Function String MultiValue [ Command ] Command
      | MainF Command
@@ -207,13 +207,12 @@ sameType a b
   | (isStr a) && (isStr b) = True
   | otherwise = False
 
--- toto jeste zmenit
 funcBody args globals = do
     vars <- many $ varDeclarationLine
     if not (checkVars (vars++args)) then error "Duplicate definition of variables"
     else do
          seq <- many $ cmd (vars ++ args ++ globals)
-         return $ Seq (vars++seq) -- TODO: toto mozna bude stacit takto?
+         return $ Seq (vars++seq)
 
 checkVars :: [Command] -> Bool
 checkVars [] = True
@@ -230,12 +229,11 @@ isMember name1 ((DefineVar name2 _):xs) =
          if name1 == name2 then True
          else isMember name1 xs
 
--- zatim jen int funkce, poresit nadtyp typu (podobne jak je v pasi.hs to PTypes)
 funcDeclaration = do
   retType <- typeParser
   i <- identifier
   vars <- parens $ sepBy varDeclarationType comma
-  semi  -- nebo _ <- semi ?? kdo vi
+  semi
   return $ Declare i retType vars
   <?> "function definition"
 
@@ -262,7 +260,6 @@ funcDefinition globals = do
   <?> "function declaration"
 
 funcAST globals = do
-  -- jestli chapu dobre, try je dobrej k look ahead
   try funcDeclaration
   <|>
   funcDefinition globals
@@ -274,15 +271,13 @@ aep = do
     if not (checkVars globals) then error "Multiple definition of same global variable"
     else do
     asts <- Pr.manyAccum checker $ funcAST globals
-    -- main <- mainAST
     eof
     return (globals, asts)
     <?> "aep"
 
-checker f fs = if (check' f (fs++[f])) then (fs++[f]) -- HOHOHO!
+checker f fs = if (check' f (fs++[f])) then (fs++[f])
                else error $ "Calling undefined function"
               where
-                -- Function String [ Command ] Command
                 check' (Function _ _ _ cmds) fs = check' cmds fs
                 check' (Assign _ e) fs = checkExpr e fs
                 check' (Print e) fs = checkExpr e fs
@@ -646,7 +641,7 @@ main = do
             then do
                 preparedSt <- prepareSt createSt globs 
                 interpret preparedSt (getMain asts) asts
-            else error "Error during compilation" -- todo
+            else error "Error during compilation"
      where
        getMain :: [Command] -> Command
        getMain [] = error "Main function missing"
