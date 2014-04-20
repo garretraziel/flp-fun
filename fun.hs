@@ -361,10 +361,10 @@ setVariableInList (first@(name, val):xs) variable value canChangeType =
                     changeValue name (UndefStr) v@(StringValue _) _ = Just ((name, v):xs)
                     changeValue name (UndefDouble) (IntegerValue a) True = Just ((name, (DoubleValue $ fromIntegral a)):xs)
                     changeValue name (DoubleValue _) (IntegerValue a) True = Just ((name, (DoubleValue $ fromIntegral a)):xs)
-                    changeValue _ _ _ _ = error $ "Cannot assing to variable " ++ name ++ ": Bad type"
+                    changeValue _ _ _ _ = error $ "Cannot assing to variable " ++ name ++ ": bad type of value " ++ (show value)
 
 setSt :: SymbolTable -> String -> MultiValue -> Bool -> SymbolTable
-setSt (global, local@(head:rest), r) variable value canChangeType=
+setSt (global, local@(head:rest), r) variable value canChangeType =
       case setVariableInList head variable value canChangeType of
            Nothing -> case setVariableInList global variable value canChangeType of
                            Nothing -> error $ "Variable \"" ++ variable ++ "\" not in scope"
@@ -376,7 +376,8 @@ insertStLocal (global, (head:rest), r) name value = (global, ((name, value):head
 
 prepareStForCall :: SymbolTable -> [Command] -> IO SymbolTable
 prepareStForCall (global, local, r) defs = do
-  interpret (global, ([]:local), r) (Seq defs) []
+  (g, h:l, r) <- interpret (global, ([]:local), r) (Seq defs) []
+  return $ (g, (reverse h):l, r)
 
 insertStRetVal :: SymbolTable -> MultiValue -> SymbolTable
 insertStRetVal (globals,locals,_) val = (globals,locals,val)
