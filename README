@@ -16,3 +16,11 @@ Implementacni detaily:
   -> lze nad nim provadet dalsi aritmenticke operace
 - je povolene vytvaret lokalni promenne se stejnym nazvem jako globalni
   -> lokalni promenna pro danou funkci "prekryje" globalni
+- "return" je brano jako klicove slovo, neni tedy mozne vytvaret
+  promenne s timto nazvem
+- pokud programator zapomene uvest "return" na konec funkce,
+  je navratova hodnota automaticky nedefinovany int
+- pokud funkce rekurzivne vola sama sebe v tele sve definice,
+  neni nutne uvadet nejprve jeji deklaraci
+- prikaz prirazeni automaticky provadni pretypovani int na double,
+  je-li to potreba
